@@ -122,5 +122,9 @@ actions:
 | `windows` | Liste d'entités ouvertes à signaler |
 | `stats` | Tuiles d'information (`entity`, `name`, `icon`) |
 | `actions` | Boutons (`button.*` presse, `lock.*` verrouille ou déverrouille, autres entités basculent) |
+| `image` | Photo de la voiture (par exemple `/local/volvo.png`, fichier placé dans `/config/www/`). Remplace l'illustration du bandeau |
+| `body_color` | Couleur de la carrosserie de l'illustration (par exemple `#1e88e5`) |
+| `map` | `false` pour masquer la mini-carte (affichée par défaut dès que `location` fournit une position) |
+| `map_zoom` | Niveau de zoom de la mini-carte (15 par défaut) |
 
 Tous les champs sont facultatifs : ce qui n'est pas configuré n'est pas affiché.

@@ -1,5 +1,5 @@
 /* autos-card-ha - carte Home Assistant visuelle pour voitures */
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
 
 const STYLE = `
 :host { display: block; }
@@ -29,6 +29,12 @@ ha-card { padding: 16px; overflow: hidden; }
 .act { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; border-radius: 12px; border: 1px solid var(--divider-color); background: transparent; color: var(--primary-text-color); font: inherit; font-size: 14px; cursor: pointer; }
 .act:active { background: var(--secondary-background-color); }
 .na { color: var(--disabled-text-color); }
+.banner { margin: 4px -4px 8px; display: flex; justify-content: center; }
+.banner svg { width: 100%; max-width: 360px; height: auto; display: block; }
+.banner img { width: 100%; max-height: 170px; object-fit: contain; display: block; }
+.map { margin-top: 14px; border-radius: 12px; overflow: hidden; border: 1px solid var(--divider-color); min-height: 80px; }
+.map ha-card { border: none; border-radius: 0; box-shadow: none; padding: 0; }
+.nomap { padding: 28px 12px; text-align: center; font-size: 13px; color: var(--disabled-text-color); background: var(--secondary-background-color); }
 `;
 
 const DOOR_GEOM = {
@@ -58,14 +64,111 @@ class AutosCardHa extends HTMLElement {
       windows: [],
       stats: [],
       actions: [],
+      map_zoom: 15,
       ...config,
     };
+    this._mapEl = null;
+    this._mapPending = false;
+    this._sig = null;
     this._render();
   }
 
   set hass(hass) {
     this._hass = hass;
-    this._render();
+    const sig = this._signature();
+    if (sig !== this._sig) {
+      this._sig = sig;
+      this._render();
+    }
+    if (this._mapEl) this._mapEl.hass = hass;
+  }
+
+  _signature() {
+    const c = this._config;
+    if (!c || !this._hass) return "";
+    const ids = [c.location, c.battery, c.fuel, c.range_electric, c.range_fuel, c.lock, c.charging, c.engine];
+    ids.push(...Object.values(c.doors || {}));
+    ids.push(...(c.windows || []).map((w) => (typeof w === "string" ? w : w.entity)));
+    ids.push(...(c.stats || []).map((s) => s.entity));
+    return ids
+      .filter(Boolean)
+      .map((id) => {
+        const s = this._hass.states[id];
+        return s ? `${id}=${s.state}|${s.attributes.latitude || ""}|${s.attributes.longitude || ""}` : id;
+      })
+      .join(";");
+  }
+
+  _hasPosition() {
+    const s = this._state(this._config.location);
+    return !!s && s.attributes.latitude !== undefined && s.attributes.longitude !== undefined;
+  }
+
+  _ensureMap() {
+    const c = this._config;
+    if (c.map === false || !c.location || !this._hasPosition()) return;
+    if (this._mapEl) {
+      this._attachMap();
+      return;
+    }
+    if (this._mapPending || !window.loadCardHelpers) return;
+    this._mapPending = true;
+    window
+      .loadCardHelpers()
+      .then((h) =>
+        h.createCardElement({
+          type: "map",
+          entities: [{ entity: c.location }],
+          default_zoom: c.map_zoom,
+          hours_to_show: 0,
+          aspect_ratio: "16:9",
+        })
+      )
+      .then((el) => {
+        el.hass = this._hass;
+        this._mapEl = el;
+        this._attachMap();
+      })
+      .catch(() => {
+        this._mapPending = false;
+      });
+  }
+
+  _attachMap() {
+    const holder = this.shadowRoot.getElementById("map");
+    if (holder && this._mapEl && this._mapEl.parentNode !== holder) {
+      holder.innerHTML = "";
+      holder.appendChild(this._mapEl);
+    }
+  }
+
+  _banner() {
+    const c = this._config;
+    if (c.image) return `<div class="banner"><img src="${c.image}" alt="${c.name || "Voiture"}"></div>`;
+    return `<div class="banner">${this._sideSvg()}</div>`;
+  }
+
+  _sideSvg() {
+    const body = this._config.body_color || "var(--primary-color)";
+    return `<svg viewBox="0 0 400 150" role="img" aria-label="Illustration de la voiture">
+      <ellipse cx="200" cy="132" rx="160" ry="7" fill="var(--divider-color)" opacity="0.6"/>
+      <path d="M26 104 L26 92 Q28 82 48 78 L98 72 Q122 42 158 38 L248 38 Q286 40 306 70 L352 78 Q374 82 374 98 L374 110 Q374 118 366 118 L34 118 Q26 118 26 110 Z" fill="${body}" opacity="0.9"/>
+      <path d="M118 70 Q136 48 162 46 L204 46 L204 70 Z" fill="var(--secondary-background-color)" opacity="0.95"/>
+      <path d="M213 46 L248 46 Q270 48 288 70 L213 70 Z" fill="var(--secondary-background-color)" opacity="0.95"/>
+      <path d="M208 46 L208 114 M140 72 L140 114" stroke="var(--card-background-color, #fff)" stroke-width="1.5" opacity="0.7" fill="none"/>
+      <rect x="190" y="82" width="12" height="3.5" rx="1.7" fill="var(--card-background-color, #fff)" opacity="0.8"/>
+      <rect x="120" y="82" width="12" height="3.5" rx="1.7" fill="var(--card-background-color, #fff)" opacity="0.8"/>
+      <rect x="362" y="84" width="12" height="7" rx="3" fill="#ffd54f"/>
+      <rect x="26" y="84" width="9" height="8" rx="3" fill="#e53935"/>
+      <circle cx="96" cy="118" r="28" fill="var(--ha-card-background, var(--card-background-color, #fff))"/>
+      <circle cx="304" cy="118" r="28" fill="var(--ha-card-background, var(--card-background-color, #fff))"/>
+      <circle cx="96" cy="118" r="23" fill="#2b2b2b"/>
+      <circle cx="304" cy="118" r="23" fill="#2b2b2b"/>
+      <circle cx="96" cy="118" r="11" fill="var(--secondary-background-color)"/>
+      <circle cx="304" cy="118" r="11" fill="var(--secondary-background-color)"/>
+      <circle cx="96" cy="118" r="3" fill="var(--divider-color)"/>
+      <circle cx="304" cy="118" r="3" fill="var(--divider-color)"/>
+    </svg>`;
   }
 
   getCardSize() {
@@ -192,6 +295,7 @@ class AutosCardHa extends HTMLElement {
     this.shadowRoot.innerHTML = `<style>${STYLE}</style>
     <ha-card>
       <div class="head"><div class="name">${c.name || "Voiture"}</div>${locTxt ? `<div class="loc"><ha-icon icon="mdi:map-marker" style="--mdc-icon-size:14px"></ha-icon>${locTxt}</div>` : ""}</div>
+      ${this._banner()}
       <div class="hero">
         <div class="car">${this._carSvg()}</div>
         <div class="bars">
@@ -202,9 +306,11 @@ class AutosCardHa extends HTMLElement {
         </div>
       </div>
       ${chips.length ? `<div class="chips">${chips.join("")}</div>` : ""}
+      ${c.map !== false && c.location ? `<div class="map" id="map">${this._hasPosition() ? "" : '<div class="nomap">Position indisponible</div>'}</div>` : ""}
       ${stats ? `<div class="stats">${stats}</div>` : ""}
       ${acts ? `<div class="acts">${acts}</div>` : ""}
     </ha-card>`;
+    this._ensureMap();
   }
 }
 
