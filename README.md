@@ -78,10 +78,10 @@ stats:
     icon: mdi:wrench
 actions:
   - entity: button.volvo_xc60_start_climatization
-    name: Clim on
+    name: Activer la clim
     icon: mdi:air-conditioner
   - entity: button.volvo_xc60_stop_climatization
-    name: Clim off
+    name: Couper la clim
     icon: mdi:air-conditioner
   - entity: button.volvo_xc60_honk_flash
     name: Klaxon et feux
@@ -130,6 +130,30 @@ actions:
     icon: mdi:battery-charging
 ```
 
+## Visuel de ta vraie voiture
+
+Sans réglage, la carte dessine une voiture générique vue de dessus : les portes pivotent sur leurs charnières, le capot et le hayon s'ouvrent, et la couleur se change avec `body_color`.
+
+Pour afficher des images de ta propre voiture, dépose-les dans `/config/www/` (elles sont alors servies sous `/local/`) puis indique :
+
+```yaml
+type: custom:autos-card-ha
+device: 0123456789abcdef0123456789abcdef
+image: /local/volvo/fermee.png
+open_images:
+  front_left: /local/volvo/porte_avant_gauche.png
+  front_right: /local/volvo/porte_avant_droite.png
+  rear_left: /local/volvo/porte_arriere_gauche.png
+  rear_right: /local/volvo/porte_arriere_droite.png
+  tailgate: /local/volvo/coffre.png
+  hood: /local/volvo/capot.png
+```
+
+- `image` est la voiture fermée. Chaque entrée de `open_images` est la même vue de la voiture avec la porte (ou le coffre, ou le capot) ouverte. Toutes les images doivent avoir les mêmes dimensions.
+- L'image correspondante apparaît en fondu quand l'ouverture est détectée. Si plusieurs ouvertures sont actives, la dernière de la liste s'affiche par-dessus.
+- Avec ces images, la vue de dessus est masquée. `show_top_view: true` la remet.
+- Les clés disponibles sont `front_left`, `front_right`, `rear_left`, `rear_right`, `tailgate` et `hood`. Tu peux n'en renseigner que quelques-unes.
+
 ## Options
 
 | Option | Rôle |
@@ -150,5 +174,7 @@ actions:
 | `device` | Appareil du véhicule : active la détection automatique de toutes les entités |
 | `show_banner`, `show_chips`, `show_stats`, `show_actions` | `false` pour masquer l'illustration, les statuts, les tuiles ou les boutons |
 | `actions[].confirm` | `true` pour exiger une seconde pression avant d'exécuter le bouton |
+| `open_images` | Images de ta voiture avec une ouverture active, par clé (`front_left`, `tailgate`, `hood`...). Nécessite `image` |
+| `show_top_view` | `true` ou `false` pour afficher la vue de dessus (masquée par défaut quand `open_images` est utilisé) |
 
 Tous les champs sont facultatifs : ce qui n'est pas configuré ni détecté n'est pas affiché.

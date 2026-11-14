@@ -1,5 +1,5 @@
 /* autos-card-ha - carte Home Assistant visuelle pour voitures */
-const VERSION = "0.3.0";
+const VERSION = "0.4.0";
 
 const STYLE = `
 :host { display: block; }
@@ -8,7 +8,7 @@ ha-card { padding: 16px; overflow: hidden; }
 .name { font-size: 20px; font-weight: 500; color: var(--primary-text-color); }
 .loc { font-size: 13px; color: var(--secondary-text-color); display: flex; align-items: center; gap: 4px; }
 .hero { display: flex; align-items: center; gap: 12px; }
-.car { flex: 0 0 38%; max-width: 150px; }
+.car { flex: 0 0 46%; max-width: 200px; }
 .car svg { width: 100%; height: auto; display: block; }
 .bars { flex: 1; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .bar .top { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; color: var(--secondary-text-color); margin-bottom: 4px; }
@@ -35,18 +35,43 @@ ha-card { padding: 16px; overflow: hidden; }
 .banner { margin: 4px -4px 8px; display: flex; justify-content: center; }
 .banner svg { width: 100%; max-width: 360px; height: auto; display: block; }
 .banner img { width: 100%; max-height: 170px; object-fit: contain; display: block; }
+.banner .stack { position: relative; width: 100%; max-width: 440px; }
+.banner .stack img { width: 100%; height: auto; max-height: none; display: block; }
+.banner .stack img.layer { position: absolute; inset: 0; opacity: 0; transition: opacity .3s; }
+.banner .stack img.layer.on { opacity: 1; }
 .map { margin-top: 14px; border-radius: 12px; overflow: hidden; border: 1px solid var(--divider-color); min-height: 80px; }
 .map ha-card { border: none; border-radius: 0; box-shadow: none; padding: 0; }
 .nomap { padding: 28px 12px; text-align: center; font-size: 13px; color: var(--disabled-text-color); background: var(--secondary-background-color); }
 .empty { padding: 24px 8px; text-align: center; color: var(--secondary-text-color); font-size: 14px; }
 `;
 
-const DOOR_GEOM = {
-  front_left: { x: 41, y: 118, w: 9, h: 54, rot: -28, ox: 45, oy: 118 },
-  front_right: { x: 150, y: 118, w: 9, h: 54, rot: 28, ox: 155, oy: 118 },
-  rear_left: { x: 41, y: 178, w: 9, h: 50, rot: -28, ox: 45, oy: 178 },
-  rear_right: { x: 150, y: 178, w: 9, h: 50, rot: 28, ox: 155, oy: 178 },
+const FR_STATE = {
+  idle: "Au repos",
+  charging: "En charge",
+  done: "Terminée",
+  fault: "Défaut",
+  connected: "Branchée",
+  disconnected: "Débranchée",
+  no_power_available: "Pas d'alimentation",
+  on: "Activé",
+  off: "Désactivé",
+  open: "Ouvert",
+  closed: "Fermé",
+  locked: "Verrouillée",
+  unlocked: "Déverrouillée",
+  running: "En marche",
+  stopped: "Arrêtée",
+  home: "À la maison",
+  not_home: "Absente",
+  no_warning: "Aucune alerte",
+  warning: "Alerte",
+  none: "Aucun",
+  true: "Oui",
+  false: "Non",
+  unavailable: "Indisponible",
+  unknown: "Inconnu",
 };
+const FR_UNIT = { d: "j" };
 
 /* ------------------------------------------------------------------ */
 /* Détection automatique                                              */
@@ -197,8 +222,8 @@ function detectVehicle(hass, deviceId) {
   };
   act(find(/(^|_)(verrouiller|lock)(_|$)/, /(deverrouiller|unlock)/), "Verrouiller", "mdi:lock");
   act(find(/(deverrouiller|unlock)/), "Déverrouiller", "mdi:lock-open", { confirm: true });
-  act(find(/(start_climati[sz]ation|demarrer_pre_?conditionnement|start_pre_?conditioning|preheat|prechauff)/), "Clim on", "mdi:air-conditioner");
-  act(find(/(stop_climati[sz]ation|arreter_pre_?conditionnement|stop_pre_?conditioning)/), "Clim off", "mdi:air-conditioner");
+  act(find(/(start_climati[sz]ation|demarrer_pre_?conditionnement|start_pre_?conditioning|preheat|prechauff)/), "Activer la clim", "mdi:air-conditioner");
+  act(find(/(stop_climati[sz]ation|arreter_pre_?conditionnement|stop_pre_?conditioning)/), "Couper la clim", "mdi:air-conditioner-off");
   const hf = find(/honk_flash/);
   if (hf) act(hf, "Klaxon et feux", "mdi:bullhorn");
   else act(find(/(^|_)(honk|klaxon)(_|$)/, /flash/), "Klaxon", "mdi:bullhorn");
@@ -395,6 +420,12 @@ class AutosCardHa extends HTMLElement {
 
   _banner() {
     const c = this._eff;
+    if (c.image && this._useStack()) {
+      const layers = Object.entries(c.open_images)
+        .map(([k, srcImg]) => `<img class="layer${(c.doors || {})[k] && this._isOpen(c.doors[k]) ? " on" : ""}" src="${srcImg}" alt="">`)
+        .join("");
+      return `<div class="banner"><div class="stack"><img src="${c.image}" alt="${c.name || "Voiture"}">${layers}</div></div>`;
+    }
     if (c.image) return `<div class="banner"><img src="${c.image}" alt="${c.name || "Voiture"}"></div>`;
     return `<div class="banner">${this._sideSvg()}</div>`;
   }
@@ -445,8 +476,8 @@ class AutosCardHa extends HTMLElement {
     const u = s.attributes.unit_of_measurement;
     const n = parseFloat(s.state);
     const isNum = Number.isFinite(n) && /^-?[\d.]+$/.test(s.state);
-    const v = isNum ? n.toLocaleString("fr-FR", { maximumFractionDigits: 1 }) : this._hass.formatEntityState ? this._hass.formatEntityState(s) : s.state;
-    return u && isNum ? `${v} ${u}` : v;
+    const v = isNum ? n.toLocaleString("fr-FR", { maximumFractionDigits: 1 }) : FR_STATE[s.state] || (this._hass.formatEntityState ? this._hass.formatEntityState(s) : s.state);
+    return u && isNum ? `${v} ${FR_UNIT[u] || u}` : v;
   }
 
   _isOpen(id) {
@@ -482,26 +513,70 @@ class AutosCardHa extends HTMLElement {
       <div class="track"><div class="fill" style="width:${pct}%;background:${this._color(pct)}"></div></div></div>`;
   }
 
+  _useStack() {
+    const c = this._eff;
+    return !!(c.image && c.open_images && Object.keys(c.open_images).length);
+  }
+
   _carSvg() {
-    const d = this._eff.doors || {};
+    const c = this._eff;
+    const d = c.doors || {};
     const open = (k) => (d[k] ? this._isOpen(d[k]) : false);
-    const col = (o) => (o ? "var(--error-color)" : "var(--primary-color)");
-    let doors = "";
-    for (const k of Object.keys(DOOR_GEOM)) {
-      const g = DOOR_GEOM[k];
+    const body = c.body_color || "var(--primary-color)";
+    const edge = "rgba(0,0,0,0.38)";
+    const glass = "#3b4a56";
+    const dark = "#15191c";
+    const red = "var(--error-color)";
+
+    const door = (k, left, y, h, mirror) => {
       const o = open(k);
-      doors += `<rect x="${g.x}" y="${g.y}" width="${g.w}" height="${g.h}" rx="3" fill="${col(o)}" opacity="${o ? 1 : 0.35}" ${o ? `transform="rotate(${g.rot} ${g.ox} ${g.oy})"` : ""}/>`;
-    }
+      const x = left ? 45 : 134;
+      const hx = left ? 45 : 155;
+      const rot = o ? (left ? 58 : -58) : 0;
+      const opening = o ? `<rect x="${left ? 47 : 134}" y="${y}" width="19" height="${h}" rx="4" fill="${dark}" opacity="0.85"/>` : "";
+      const mir = mirror ? `<ellipse cx="${left ? 41 : 159}" cy="${y + 1}" rx="7" ry="4.5" fill="${body}" stroke="${o ? red : edge}" stroke-width="1"/>` : "";
+      return `${opening}<g transform="rotate(${rot} ${hx} ${y})">
+        <rect x="${x}" y="${y}" width="21" height="${h}" rx="5" fill="${body}" stroke="${o ? red : edge}" stroke-width="${o ? 2 : 1}"/>
+        <rect x="${left ? 50 : 139}" y="${y + 6}" width="11" height="${h - 12}" rx="3" fill="${glass}"/>
+        <rect x="${left ? 47 : 151}" y="${y + h * 0.55}" width="3" height="7" rx="1.5" fill="rgba(255,255,255,0.6)"/>
+        ${mir}
+      </g>`;
+    };
+
     const hood = open("hood");
     const tail = open("tailgate");
-    return `<svg viewBox="0 0 200 340" role="img" aria-label="Voiture vue de dessus">
-      <rect x="50" y="22" width="100" height="296" rx="44" fill="var(--secondary-background-color)" stroke="var(--divider-color)" stroke-width="2"/>
-      <path d="M64 100 Q100 84 136 100 L132 128 Q100 120 68 128 Z" fill="var(--divider-color)"/>
-      <path d="M68 232 Q100 240 132 232 L136 256 Q100 268 64 256 Z" fill="var(--divider-color)"/>
-      <rect x="66" y="132" width="68" height="96" rx="10" fill="none" stroke="var(--divider-color)" stroke-width="1.5"/>
-      <rect x="62" y="30" width="76" height="50" rx="22" fill="${col(hood)}" opacity="${hood ? 0.9 : 0.18}" ${hood ? 'transform="translate(0 -8)"' : ""}/>
-      <rect x="62" y="270" width="76" height="40" rx="18" fill="${col(tail)}" opacity="${tail ? 0.9 : 0.18}" ${tail ? 'transform="translate(0 8)"' : ""}/>
-      ${doors}
+    const hoodSvg = hood
+      ? `<rect x="62" y="38" width="76" height="60" rx="12" fill="${dark}" opacity="0.88"/>
+         <path d="M58 68 Q100 58 142 68 L146 104 Q100 98 54 104 Z" fill="${body}" stroke="${red}" stroke-width="2"/>`
+      : `<path d="M62 36 Q100 24 138 36 L142 100 Q100 94 58 100 Z" fill="rgba(255,255,255,0.10)" stroke="${edge}" stroke-width="1"/>
+         <path d="M100 30 L100 96" stroke="${edge}" stroke-width="0.8" opacity="0.5"/>`;
+    const tailSvg = tail
+      ? `<rect x="68" y="262" width="64" height="44" rx="10" fill="${dark}" opacity="0.88"/>
+         <path d="M60 236 Q100 226 140 236 L144 270 Q100 262 56 270 Z" fill="${body}" stroke="${red}" stroke-width="2"/>`
+      : `<path d="M64 258 Q100 268 136 258 L140 310 Q100 320 60 310 Z" fill="rgba(255,255,255,0.08)" stroke="${edge}" stroke-width="1"/>`;
+
+    return `<svg viewBox="-30 0 260 340" role="img" aria-label="Voiture vue de dessus">
+      <ellipse cx="100" cy="326" rx="64" ry="7" fill="rgba(0,0,0,0.18)"/>
+      <rect x="37" y="62" width="11" height="38" rx="5" fill="#1f2428"/>
+      <rect x="152" y="62" width="11" height="38" rx="5" fill="#1f2428"/>
+      <rect x="37" y="238" width="11" height="38" rx="5" fill="#1f2428"/>
+      <rect x="152" y="238" width="11" height="38" rx="5" fill="#1f2428"/>
+      <path d="M100 12 C132 12 148 26 151 58 L154 112 L155 232 L152 272 C149 304 132 326 100 328 C68 326 51 304 48 272 L45 232 L46 112 L49 58 C52 26 68 12 100 12 Z" fill="${body}" stroke="${edge}" stroke-width="1.5"/>
+      <path d="M58 36 Q70 28 84 30 L80 40 Q68 38 60 46 Z" fill="#ffe082"/>
+      <path d="M142 36 Q130 28 116 30 L120 40 Q132 38 140 46 Z" fill="#ffe082"/>
+      <path d="M58 300 Q70 308 84 306 L80 298 Q68 300 60 292 Z" fill="#c62828"/>
+      <path d="M142 300 Q130 308 116 306 L120 298 Q132 300 140 292 Z" fill="#c62828"/>
+      ${hoodSvg}
+      <path d="M64 104 Q100 92 136 104 L132 134 Q100 127 68 134 Z" fill="${glass}"/>
+      <rect x="67" y="134" width="66" height="96" rx="12" fill="${body}" stroke="${edge}" stroke-width="1"/>
+      <rect x="67" y="134" width="66" height="96" rx="12" fill="rgba(255,255,255,0.16)"/>
+      <path d="M73 140 L73 224 M127 140 L127 224" stroke="${edge}" stroke-width="1.6" stroke-linecap="round"/>
+      <path d="M68 230 Q100 237 132 230 L137 256 Q100 266 63 256 Z" fill="${glass}"/>
+      ${tailSvg}
+      ${door("rear_left", true, 182, 66, false)}
+      ${door("rear_right", false, 182, 66, false)}
+      ${door("front_left", true, 110, 70, true)}
+      ${door("front_right", false, 110, 70, true)}
     </svg>`;
   }
 
@@ -517,7 +592,7 @@ class AutosCardHa extends HTMLElement {
     }
 
     const loc = this._state(c.location);
-    const locTxt = loc && this._valid(loc) ? (loc.state === "home" ? "À la maison" : loc.state === "not_home" ? "Absente" : loc.state) : "";
+    const locTxt = loc && this._valid(loc) ? FR_STATE[loc.state] || loc.state : "";
 
     const chips = [];
     if (c.lock && this._state(c.lock)) {
@@ -534,7 +609,7 @@ class AutosCardHa extends HTMLElement {
       let t;
       if (!this._valid(s)) t = "Charge indisponible";
       else if (c.charging.startsWith("binary_sensor.")) t = s.state === "on" ? "En charge" : "Pas en charge";
-      else t = this._fmt(c.charging);
+      else t = "Charge : " + this._fmt(c.charging).toLowerCase();
       chips.push(`<div class="chip ${this._valid(s) ? "" : "off"}"><ha-icon icon="mdi:ev-plug-type2"></ha-icon>${t}</div>`);
     }
     if (c.engine && this._state(c.engine)) {
@@ -577,7 +652,7 @@ class AutosCardHa extends HTMLElement {
       <div class="head"><div class="name">${c.name || "Voiture"}</div>${locTxt ? `<div class="loc"><ha-icon icon="mdi:map-marker" style="--mdc-icon-size:14px"></ha-icon>${locTxt}</div>` : ""}</div>
       ${c.show_banner !== false ? this._banner() : ""}
       <div class="hero">
-        <div class="car">${this._carSvg()}</div>
+        ${c.show_top_view ?? !this._useStack() ? `<div class="car">${this._carSvg()}</div>` : ""}
         <div class="bars">
           ${this._bar("Batterie", c.battery, 100, "%")}
           ${this._bar("Carburant", c.fuel, fuelMax)}
