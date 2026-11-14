@@ -8,7 +8,28 @@ Carte Home Assistant visuelle pour suivre ses voitures : batterie, carburant, au
 2. Ajouter l'URL de ce dépôt, type **Tableau de bord**.
 3. Installer **Autos Card HA**, puis recharger la page.
 
-## Configuration
+## Ajout en quelques clics (détection automatique)
+
+1. Sur ton tableau de bord : **Modifier** > **Ajouter une carte** > **Autos Card HA**. Si un véhicule est reconnu, la carte se pré-remplit toute seule.
+2. Dans l'éditeur visuel, choisis ton véhicule dans la liste **Véhicule détecté**.
+3. L'encadré en dessous montre ce qui a été trouvé (position, batterie, carburant, verrou, charge, moteur, portes, vitres, tuiles, boutons).
+4. Ajuste le nom, la photo, la couleur, les blocs affichés et la carte avec les champs de l'éditeur. La section **Entités : remplacer la détection** permet de corriger une entité mal reconnue.
+
+Le YAML produit est minimal :
+
+```yaml
+type: custom:autos-card-ha
+device: 0123456789abcdef0123456789abcdef
+name: Volvo XC60
+```
+
+Comment ça marche : la carte lit les appareils et entités de Home Assistant, garde ceux qui ressemblent à une voiture (verrou, portes, batterie, carburant, position), puis rattache chaque entité à son rôle d'après sa classe d'appareil, son unité et son nom (français ou anglais). Les entités que tu indiques toi-même ont toujours priorité sur la détection.
+
+Pour des raisons de sécurité, la détection ne propose jamais de bouton de démarrage du moteur. Le bouton **Déverrouiller** demande une seconde pression pour confirmer.
+
+Le champ `device` est l'identifiant de l'appareil : le plus simple est de le choisir dans l'éditeur.
+
+## Configuration manuelle
 
 Volvo XC60 :
 
@@ -115,7 +136,7 @@ actions:
 | --- | --- |
 | `name` | Titre de la carte |
 | `location` | `device_tracker` pour afficher « À la maison » |
-| `battery`, `fuel`, `fuel_max` | Barres de batterie (en %) et de carburant |
+| `battery`, `fuel`, `fuel_max` | Barres de batterie (en %) et de carburant. `fuel_max` est la capacité du réservoir en litres (70 par défaut, 100 si le capteur est en %) |
 | `range_electric`, `range_fuel` | Autonomies affichées à côté des barres |
 | `lock`, `charging`, `engine` | Pastilles de statut |
 | `doors` | `front_left`, `front_right`, `rear_left`, `rear_right`, `tailgate`, `hood` : l'ouverture s'anime sur l'illustration |
@@ -126,5 +147,8 @@ actions:
 | `body_color` | Couleur de la carrosserie de l'illustration (par exemple `#1e88e5`) |
 | `map` | `false` pour masquer la mini-carte (affichée par défaut dès que `location` fournit une position) |
 | `map_zoom` | Niveau de zoom de la mini-carte (15 par défaut) |
+| `device` | Appareil du véhicule : active la détection automatique de toutes les entités |
+| `show_banner`, `show_chips`, `show_stats`, `show_actions` | `false` pour masquer l'illustration, les statuts, les tuiles ou les boutons |
+| `actions[].confirm` | `true` pour exiger une seconde pression avant d'exécuter le bouton |
 
-Tous les champs sont facultatifs : ce qui n'est pas configuré n'est pas affiché.
+Tous les champs sont facultatifs : ce qui n'est pas configuré ni détecté n'est pas affiché.
