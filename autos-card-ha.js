@@ -40,12 +40,14 @@ ha-card { padding: 16px; overflow: hidden; }
 .banner .stack img { width: 100%; height: auto; max-height: none; display: block; }
 .banner .stack img.layer { position: absolute; inset: 0; opacity: 0; transition: opacity .3s; }
 .banner .stack img.layer.on { opacity: 1; }
-.map { position: relative; isolation: isolate; margin-top: 14px; border-radius: 12px; overflow: hidden; min-height: 80px; background: var(--secondary-background-color); }
+.map { position: relative; isolation: isolate; margin-top: 14px; border-radius: 18px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.08); overflow: hidden; min-height: 80px; background: var(--secondary-background-color); }
 .map ha-card { border: none; border-radius: 0; box-shadow: none; padding: 0; }
-.addr { position: absolute; left: 0; right: 0; bottom: 0; z-index: 1001; display: flex; align-items: center; gap: 12px; padding: 34px 14px 12px; background: linear-gradient(to top, var(--card-background-color, #fff) 18%, transparent); pointer-events: none; color: var(--primary-text-color); }
+.addr { position: absolute; left: 10px; right: 58px; bottom: 10px; z-index: 1001; display: flex; align-items: center; gap: 10px; padding: 9px 14px 9px 10px; width: fit-content; max-width: calc(100% - 68px); border-radius: 14px; background: color-mix(in srgb, var(--card-background-color, #fff) 82%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 2px 10px rgba(0,0,0,.22); pointer-events: none; color: var(--primary-text-color); }
+.nav { position: absolute; right: 10px; bottom: 10px; z-index: 1001; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--primary-color); color: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.3); text-decoration: none; cursor: pointer; }
+.nav ha-icon { --mdc-icon-size: 22px; }
 .addr:empty { display: none; }
-.addr ha-icon { --mdc-icon-size: 26px; flex: 0 0 auto; }
-.addr .l1 { font-size: 15px; font-weight: 500; line-height: 1.25; }
+.addr ha-icon { --mdc-icon-size: 22px; flex: 0 0 auto; color: var(--primary-color); }
+.addr .l1 { font-size: 14px; font-weight: 500; line-height: 1.25; }
 .addr .l2 { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--secondary-text-color); }
 .nomap { padding: 28px 12px; text-align: center; font-size: 13px; color: var(--disabled-text-color); background: var(--secondary-background-color); }
 .empty { padding: 24px 8px; text-align: center; color: var(--secondary-text-color); font-size: 14px; }
@@ -475,7 +477,7 @@ class AutosCardHa extends HTMLElement {
           entities: [{ entity: loc }],
           default_zoom: c.map_zoom,
           hours_to_show: 0,
-          aspect_ratio: "20:7",
+          aspect_ratio: "20:9",
           theme_mode: c.map_theme || "light",
         })
       )
@@ -496,6 +498,12 @@ class AutosCardHa extends HTMLElement {
       holder.innerHTML = "";
       holder.appendChild(this._mapEl);
     }
+  }
+
+  _navUrl() {
+    const t = this._state(this._eff.location);
+    const at = (t && t.attributes) || {};
+    return at.latitude != null ? `https://www.google.com/maps/dir/?api=1&destination=${at.latitude},${at.longitude}` : "#";
   }
 
   _addressHtml() {
@@ -849,7 +857,7 @@ class AutosCardHa extends HTMLElement {
     const hasPos = this._hasPosition();
     const mapBlock =
       c.map !== false && c.location
-        ? `<div class="map" id="map"><div id="mapslot">${hasPos ? "" : '<div class="nomap">Position indisponible</div>'}</div>${c.address !== false && hasPos ? `<div class="addr" id="addr">${this._addressHtml()}</div>` : ""}</div>`
+        ? `<div class="map" id="map"><div id="mapslot">${hasPos ? "" : '<div class="nomap">Position indisponible</div>'}</div>${c.address !== false && hasPos ? `<div class="addr" id="addr">${this._addressHtml()}</div>` : ""}${hasPos ? `<a class="nav" id="nav" target="_blank" rel="noopener" title="Itinéraire" href="${this._navUrl()}"><ha-icon icon="mdi:navigation-variant"></ha-icon></a>` : ""}</div>`
         : "";
 
     this.shadowRoot.innerHTML = `<style>${STYLE}</style>

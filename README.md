@@ -138,6 +138,8 @@ Un seul bouton remplace « Activer » et « Couper » : il affiche **Activer la 
 
 ## Plan et adresse
 
+Le plan a des coins arrondis, l'adresse dans une pastille translucide et un bouton rond **Itinéraire** (ouvre Google Maps vers la voiture).
+
 La mini-carte est un plan clair avec l'adresse en bas à gauche.
 
 - `map_theme` : `light` (par défaut), `dark` ou `auto` (suit le thème de Home Assistant).
