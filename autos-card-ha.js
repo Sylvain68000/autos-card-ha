@@ -1,5 +1,5 @@
 /* autos-card-ha - carte Home Assistant visuelle pour voitures */
-const VERSION = "0.4.0";
+const VERSION = "0.5.0";
 
 const STYLE = `
 :host { display: block; }
@@ -30,6 +30,7 @@ ha-card { padding: 16px; overflow: hidden; }
 .act { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; border-radius: 12px; border: 1px solid var(--divider-color); background: transparent; color: var(--primary-text-color); font: inherit; font-size: 14px; cursor: pointer; }
 .act:active { background: var(--secondary-background-color); }
 .act.armed { border-color: var(--error-color); color: var(--error-color); }
+.act.on { border-color: var(--primary-color); color: var(--primary-color); }
 .act[disabled] { opacity: .45; cursor: default; }
 .na { color: var(--disabled-text-color); }
 .banner { margin: 4px -4px 8px; display: flex; justify-content: center; }
@@ -39,8 +40,13 @@ ha-card { padding: 16px; overflow: hidden; }
 .banner .stack img { width: 100%; height: auto; max-height: none; display: block; }
 .banner .stack img.layer { position: absolute; inset: 0; opacity: 0; transition: opacity .3s; }
 .banner .stack img.layer.on { opacity: 1; }
-.map { margin-top: 14px; border-radius: 12px; overflow: hidden; border: 1px solid var(--divider-color); min-height: 80px; }
+.map { position: relative; isolation: isolate; margin-top: 14px; border-radius: 12px; overflow: hidden; min-height: 80px; background: var(--secondary-background-color); }
 .map ha-card { border: none; border-radius: 0; box-shadow: none; padding: 0; }
+.addr { position: absolute; left: 0; right: 0; bottom: 0; z-index: 1001; display: flex; align-items: center; gap: 12px; padding: 34px 14px 12px; background: linear-gradient(to top, var(--card-background-color, #fff) 18%, transparent); pointer-events: none; color: var(--primary-text-color); }
+.addr:empty { display: none; }
+.addr ha-icon { --mdc-icon-size: 26px; flex: 0 0 auto; }
+.addr .l1 { font-size: 15px; font-weight: 500; line-height: 1.25; }
+.addr .l2 { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--secondary-text-color); }
 .nomap { padding: 28px 12px; text-align: center; font-size: 13px; color: var(--disabled-text-color); background: var(--secondary-background-color); }
 .empty { padding: 24px 8px; text-align: center; color: var(--secondary-text-color); font-size: 14px; }
 `;
@@ -204,13 +210,21 @@ function detectVehicle(hass, deviceId) {
   const st = (e, name, icon) => {
     if (e) r.stats.push({ entity: e.id, name, icon });
   };
-  st(sensor(/(odometer|kilometrage)/, /(avant|service|entretien|trip|dernier|distance_to)/), "Kilométrage", "mdi:counter");
+  const od = sensor(/(odometer|kilometrage)/, /(avant|service|entretien|trip|dernier|distance_to)/);
+  if (od) r.odometer = od.id;
+  const ad = sensor(/(adresse|address)/, /(mail|(^|_)ip(_|$)|mac)/);
+  if (ad) r.address = ad.id;
   const tm = sensor(/trip_manual_distance/);
   const ta = sensor(/trip_automatic_distance/);
   const tl = sensor(/(dernier_trajet|last_trip)/);
   if (tm) st(tm, "Trajet manuel", "mdi:map-marker-distance");
   else if (ta) st(ta, "Trajet auto", "mdi:map-marker-distance");
   else st(tl, "Dernier trajet", "mdi:map-marker-distance");
+  const noTotal = /(total|cumul)/;
+  const cf = sensor(/manual_average_fuel_consumption/, noTotal) || sensor(/(average_fuel_consumption|fuel_consumption|consommation_(carburant|essence)|conso_(carburant|essence))/, noTotal);
+  if (cf) r.consumption_fuel = cf.id;
+  const ce = sensor(/manual_average_energy_consumption/, noTotal) || sensor(/(average_energy_consumption|energy_consumption|electric_consumption|consommation_(electrique|energie)|conso_electrique)/, noTotal);
+  if (ce) r.consumption_electric = ce.id;
   st(sensor(/(^|_)(soh_batterie|battery_soh|state_of_health|sante_batterie)/, /(capacit|resist)/), "Santé batterie", "mdi:battery-heart-variant");
   st(sensor(/(time_to_service|jours_avant_entretien|days_to_service)/), "Entretien dans", "mdi:wrench-clock");
   st(sensor(/(distance_to_service|kilometrage_avant_entretien|km_to_service)/), "Entretien (km)", "mdi:wrench");
@@ -222,8 +236,17 @@ function detectVehicle(hass, deviceId) {
   };
   act(find(/(^|_)(verrouiller|lock)(_|$)/, /(deverrouiller|unlock)/), "Verrouiller", "mdi:lock");
   act(find(/(deverrouiller|unlock)/), "Déverrouiller", "mdi:lock-open", { confirm: true });
-  act(find(/(start_climati[sz]ation|demarrer_pre_?conditionnement|start_pre_?conditioning|preheat|prechauff)/), "Activer la clim", "mdi:air-conditioner");
-  act(find(/(stop_climati[sz]ation|arreter_pre_?conditionnement|stop_pre_?conditioning)/), "Couper la clim", "mdi:air-conditioner-off");
+  const cOn = find(/(start_climati[sz]ation|demarrer_pre_?conditionnement|start_pre_?conditioning|preheat|prechauff)/);
+  const cOff = find(/(stop_climati[sz]ation|arreter_pre_?conditionnement|stop_pre_?conditioning)/);
+  const cSt = pick((e) => ["binary_sensor", "switch", "climate"].includes(e.domain) && /(climati[sz]ation|pre_?conditionnement|preconditioning|preheat|prechauff)/.test(e.text) && !/(commande|command|erreur|error)/.test(e.text));
+  if (cOn) r.climate_on = cOn.id;
+  if (cOff) r.climate_off = cOff.id;
+  if (cSt) r.climate_state = cSt.id;
+  if (cOn && cOff) r.actions.push({ climate: true, name: "Clim", icon: "mdi:air-conditioner" });
+  else {
+    act(cOn, "Activer la clim", "mdi:air-conditioner");
+    act(cOff, "Couper la clim", "mdi:air-conditioner-off");
+  }
   const hf = find(/honk_flash/);
   if (hf) act(hf, "Klaxon et feux", "mdi:bullhorn");
   else act(find(/(^|_)(honk|klaxon)(_|$)/, /flash/), "Klaxon", "mdi:bullhorn");
@@ -246,7 +269,7 @@ function listVehicles(hass) {
   for (const did of devs) {
     const d = detectVehicle(hass, did);
     const signals = (d.lock ? 1 : 0) + (Object.keys(d.doors).length ? 1 : 0) + (d.battery ? 1 : 0) + (d.fuel ? 1 : 0);
-    const vehicleOnly = d.location || d.fuel || d.range_electric || d.range_fuel || d.stats.some((s) => /Kilom/.test(s.name));
+    const vehicleOnly = d.location || d.fuel || d.range_electric || d.range_fuel || d.odometer;
     if (vehicleOnly && signals >= 2) out.push({ id: did, name: deviceName(hass, did), detected: d });
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
@@ -255,6 +278,51 @@ function listVehicles(hass) {
 /* ------------------------------------------------------------------ */
 /* Carte                                                              */
 /* ------------------------------------------------------------------ */
+
+const esc = (s) => String(s).replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+
+const GEO_MEM = new Map();
+
+function fmtAddress(j) {
+  const a = (j && j.address) || {};
+  const road = a.road || a.pedestrian || a.footway || a.path || a.residential || "";
+  const l1 = [road, a.house_number].filter(Boolean).join(" ") || (j && j.name) || String((j && j.display_name) || "").split(",")[0];
+  const l2 = a.village || a.town || a.city || a.municipality || a.hamlet || a.suburb || "";
+  return { l1, l2 };
+}
+
+/* Option `geocode: true` uniquement : adresse via OpenStreetMap (Nominatim), depuis le navigateur.
+   Les coordonnées sont arrondies à environ 10 m et la réponse est mise en cache dans le navigateur. */
+function reverseGeocode(lat, lon) {
+  const key = `${lat.toFixed(4)},${lon.toFixed(4)}`;
+  if (GEO_MEM.has(key)) return GEO_MEM.get(key);
+  try {
+    const raw = localStorage.getItem("autos-card-ha:geo:" + key);
+    if (raw) {
+      const p = Promise.resolve(JSON.parse(raw));
+      GEO_MEM.set(key, p);
+      return p;
+    }
+  } catch (e) {}
+  const p = fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&zoom=18&accept-language=fr&lat=${lat.toFixed(5)}&lon=${lon.toFixed(5)}`)
+    .then((r) => {
+      if (!r.ok) throw new Error(String(r.status));
+      return r.json();
+    })
+    .then((j) => {
+      const v = fmtAddress(j);
+      try {
+        localStorage.setItem("autos-card-ha:geo:" + key, JSON.stringify(v));
+      } catch (e) {}
+      return v;
+    })
+    .catch(() => {
+      GEO_MEM.delete(key);
+      return null;
+    });
+  GEO_MEM.set(key, p);
+  return p;
+}
 
 class AutosCardHa extends HTMLElement {
   constructor() {
@@ -265,6 +333,11 @@ class AutosCardHa extends HTMLElement {
     this._eff = null;
     this._armed = null;
     this.shadowRoot.addEventListener("click", (e) => {
+      const cl = e.target.closest("[data-climate]");
+      if (cl) {
+        if (!cl.disabled) this._toggleClimate();
+        return;
+      }
       const b = e.target.closest("[data-entity]");
       if (!b || b.disabled) return;
       const id = b.dataset.entity;
@@ -302,6 +375,10 @@ class AutosCardHa extends HTMLElement {
     this._mapPending = false;
     this._sig = null;
     this._det = null;
+    this._addr = null;
+    this._addrKey = null;
+    this._climT = undefined;
+    this._climPend = null;
     if (this._hass) this._eff = this._effective();
     this._render();
   }
@@ -344,6 +421,7 @@ class AutosCardHa extends HTMLElement {
     eff.stats = clean.stats && clean.stats.length ? clean.stats : det.stats || [];
     eff.actions = clean.actions && clean.actions.length ? clean.actions : det.actions || [];
     if (!clean.name && c.device && hass) eff.name = deviceName(hass, c.device);
+    if (clean.show_address === false) eff.address = false;
     if (eff.body_color === "theme") delete eff.body_color;
     return eff;
   }
@@ -356,6 +434,7 @@ class AutosCardHa extends HTMLElement {
     ids.push(...(c.windows || []).map((w) => (typeof w === "string" ? w : w.entity)));
     ids.push(...(c.stats || []).map((s) => s.entity));
     ids.push(...(c.actions || []).map((a) => a.entity));
+    ids.push(c.climate_state, c.climate_on, c.climate_off, typeof c.address === "string" ? c.address : null, c.odometer, c.consumption_fuel, c.consumption_electric);
     return (
       (c.name || "") +
       "#" +
@@ -396,7 +475,8 @@ class AutosCardHa extends HTMLElement {
           entities: [{ entity: loc }],
           default_zoom: c.map_zoom,
           hours_to_show: 0,
-          aspect_ratio: "16:9",
+          aspect_ratio: "20:7",
+          theme_mode: c.map_theme || "light",
         })
       )
       .then((el) => {
@@ -411,10 +491,117 @@ class AutosCardHa extends HTMLElement {
   }
 
   _attachMap() {
-    const holder = this.shadowRoot.getElementById("map");
+    const holder = this.shadowRoot.getElementById("mapslot");
     if (holder && this._mapEl && this._mapEl.parentNode !== holder) {
       holder.innerHTML = "";
       holder.appendChild(this._mapEl);
+    }
+  }
+
+  _addressHtml() {
+    const a = this._addr;
+    if (!a || !a.l1) return "";
+    return `<ha-icon icon="mdi:map-marker"></ha-icon><div><div class="l1">${esc(a.l1)}</div>${a.l2 ? `<div class="l2">${esc(a.l2)}</div>` : ""}</div>`;
+  }
+
+  _setAddr(v) {
+    this._addr = v;
+    const el = this.shadowRoot.getElementById("addr");
+    if (el) el.innerHTML = this._addressHtml();
+  }
+
+  _updateAddress() {
+    const c = this._eff;
+    if (c.map === false || c.address === false || !c.location) return;
+    if (typeof c.address === "string") {
+      const ae = this._state(c.address);
+      if (ae && this._valid(ae)) {
+        const parts = String(ae.state).split(",").map((x) => x.trim()).filter(Boolean);
+        this._setAddr({ l1: parts[0] || "", l2: parts.slice(1).join(", ").replace(/^\d{4,5}\s+/, "") });
+      }
+      return;
+    }
+    if (c.geocode !== true) return;
+    const s = this._state(c.location);
+    if (!s || s.attributes.latitude === undefined) return;
+    const lat = Number(s.attributes.latitude);
+    const lon = Number(s.attributes.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+    const key = `${lat.toFixed(4)},${lon.toFixed(4)}`;
+    if (key === this._addrKey) return;
+    const wait = 30000 - (Date.now() - (this._geoAt || 0));
+    if (wait > 0 && this._addr) {
+      clearTimeout(this._geoT);
+      this._geoT = setTimeout(() => this._updateAddress(), wait + 50);
+      return;
+    }
+    this._addrKey = key;
+    this._geoAt = Date.now();
+    reverseGeocode(lat, lon).then((v) => {
+      if (this._addrKey !== key) return;
+      if (v) this._setAddr(v);
+      else {
+        this._addrKey = null;
+        clearTimeout(this._geoT);
+        this._geoT = setTimeout(() => this._updateAddress(), 60000);
+      }
+    });
+  }
+
+  _climKey() {
+    return "autos-card-ha:clim:" + (this._eff.climate_on || "");
+  }
+
+  _climStart() {
+    if (this._climT === undefined) {
+      try {
+        this._climT = Number(localStorage.getItem(this._climKey())) || 0;
+      } catch (e) {
+        this._climT = 0;
+      }
+    }
+    return this._climT;
+  }
+
+  _setClimStart(t) {
+    this._climT = t;
+    try {
+      if (t) localStorage.setItem(this._climKey(), String(t));
+      else localStorage.removeItem(this._climKey());
+    } catch (e) {}
+  }
+
+  _climIsOn() {
+    const c = this._eff;
+    if (!c.climate_on) return false;
+    const s = this._state(c.climate_state);
+    if (this._valid(s)) {
+      if (this._climPend && Date.now() - this._climPend.t < 15000) return this._climPend.v;
+      return s.state !== "off";
+    }
+    const t = this._climStart();
+    return t > 0 && Date.now() - t < (c.climate_timeout || 15) * 60000;
+  }
+
+  _toggleClimate() {
+    const c = this._eff;
+    if (!this._hass || !c.climate_on) return;
+    const on = this._climIsOn();
+    const target = on ? c.climate_off : c.climate_on;
+    if (!target) return;
+    this._hass.callService("button", "press", { entity_id: target });
+    this._climPend = { v: !on, t: Date.now() };
+    this._setClimStart(on ? 0 : Date.now());
+    this._render();
+  }
+
+  _scheduleClimExpiry() {
+    clearTimeout(this._climX);
+    const c = this._eff;
+    const t = this._climStart();
+    if (t > 0 && c.climate_on && !this._valid(this._state(c.climate_state))) {
+      const rest = (c.climate_timeout || 15) * 60000 - (Date.now() - t);
+      if (rest > 0) this._climX = setTimeout(() => this._render(), rest + 500);
     }
   }
 
@@ -583,7 +770,7 @@ class AutosCardHa extends HTMLElement {
   _render() {
     if (!this._config || !this._hass) return;
     const c = this._eff || (this._eff = this._effective());
-    const hasAnything = c.location || c.battery || c.fuel || c.lock || Object.keys(c.doors).length || c.stats.length;
+    const hasAnything = c.location || c.battery || c.fuel || c.lock || c.odometer || Object.keys(c.doors).length || c.stats.length;
     if (!hasAnything) {
       this.shadowRoot.innerHTML = `<style>${STYLE}</style><ha-card><div class="empty">${
         this._config.device ? "Aucune entité détectée pour ce véhicule. Choisis-les à la main dans l'éditeur." : "Choisis un véhicule dans l'éditeur de la carte."
@@ -620,6 +807,7 @@ class AutosCardHa extends HTMLElement {
           : `<div class="chip off"><ha-icon icon="mdi:engine"></ha-icon>Moteur indisponible</div>`
       );
     }
+    if (c.climate_on && this._climIsOn()) chips.push(`<div class="chip ok"><ha-icon icon="mdi:air-conditioner"></ha-icon>Clim en marche</div>`);
     const names = { front_left: "Porte avant gauche", front_right: "Porte avant droite", rear_left: "Porte arrière gauche", rear_right: "Porte arrière droite", tailgate: "Coffre", hood: "Capot" };
     for (const k of Object.keys(c.doors || {})) {
       if (this._isOpen(c.doors[k])) chips.push(`<div class="chip warn"><ha-icon icon="mdi:car-door"></ha-icon>${names[k] || k}</div>`);
@@ -630,12 +818,25 @@ class AutosCardHa extends HTMLElement {
       if (this._isOpen(id)) chips.push(`<div class="chip warn"><ha-icon icon="mdi:window-open-variant"></ha-icon>${nm}</div>`);
     }
 
-    const stats = (c.stats || [])
+    const statList = [
+      ...(c.odometer ? [{ entity: c.odometer, name: "Kilométrage", icon: "mdi:counter" }] : []),
+      ...(c.consumption_fuel ? [{ entity: c.consumption_fuel, name: "Conso essence", icon: "mdi:gas-station" }] : []),
+      ...(c.consumption_electric ? [{ entity: c.consumption_electric, name: "Conso électrique", icon: "mdi:lightning-bolt" }] : []),
+      ...(c.stats || []),
+    ];
+    const stats = statList
       .map((s) => `<div class="stat"><div class="l">${s.icon ? `<ha-icon icon="${s.icon}"></ha-icon>` : ""}${s.name || s.entity}</div><div class="v ${this._valid(this._state(s.entity)) ? "" : "na"}">${this._fmt(s.entity)}</div></div>`)
       .join("");
 
     const acts = (c.actions || [])
       .map((a) => {
+        if (a.climate) {
+          if (!c.climate_on) return "";
+          const on = this._climIsOn();
+          const tgt = this._state(on ? c.climate_off || c.climate_on : c.climate_on);
+          const dis = !tgt || tgt.state === "unavailable";
+          return `<button class="act ${on ? "on" : ""}" data-climate="1" ${dis ? "disabled" : ""}><ha-icon icon="${on ? "mdi:snowflake-off" : "mdi:air-conditioner"}"></ha-icon>${on ? "Couper la clim" : "Activer la clim"}</button>`;
+        }
         const st = this._state(a.entity);
         const dis = !st || st.state === "unavailable";
         const armed = this._armed === a.entity;
@@ -645,7 +846,11 @@ class AutosCardHa extends HTMLElement {
 
     const unit = this._state(c.fuel) && this._state(c.fuel).attributes.unit_of_measurement;
     const fuelMax = c.fuel_max || (unit === "%" ? 100 : 70);
-    const mapBlock = c.map !== false && c.location ? `<div class="map" id="map">${this._hasPosition() ? "" : '<div class="nomap">Position indisponible</div>'}</div>` : "";
+    const hasPos = this._hasPosition();
+    const mapBlock =
+      c.map !== false && c.location
+        ? `<div class="map" id="map"><div id="mapslot">${hasPos ? "" : '<div class="nomap">Position indisponible</div>'}</div>${c.address !== false && hasPos ? `<div class="addr" id="addr">${this._addressHtml()}</div>` : ""}</div>`
+        : "";
 
     this.shadowRoot.innerHTML = `<style>${STYLE}</style>
     <ha-card>
@@ -666,6 +871,8 @@ class AutosCardHa extends HTMLElement {
       ${c.show_actions !== false && acts ? `<div class="acts">${acts}</div>` : ""}
     </ha-card>`;
     this._ensureMap();
+    this._updateAddress();
+    this._scheduleClimExpiry();
   }
 }
 
@@ -693,9 +900,26 @@ const LABELS = {
   lock: "Verrouillage",
   charging: "Charge",
   engine: "Moteur",
+  map_theme: "Style du plan",
+  show_address: "Afficher l'adresse sur le plan",
+  address: "Capteur d'adresse (détecté par défaut)",
+  geocode: "Chercher l'adresse via OpenStreetMap si aucun capteur",
+  odometer: "Kilométrage",
+  consumption_fuel: "Consommation essence",
+  consumption_electric: "Consommation électrique",
+  climate_on: "Bouton : démarrer la clim",
+  climate_off: "Bouton : couper la clim",
+  climate_state: "État de la clim (facultatif)",
+  climate_timeout: "Durée de la clim sans état (minutes)",
 };
 
-const EDITOR_DEFAULTS = { map: true, show_banner: true, show_chips: true, show_stats: true, show_actions: true, map_zoom: 15, body_color: "theme", device: "none" };
+const EDITOR_DEFAULTS = { map: true, show_address: true, geocode: false, map_theme: "light", show_banner: true, show_chips: true, show_stats: true, show_actions: true, map_zoom: 15, body_color: "theme", device: "none" };
+
+const MAP_THEMES = [
+  { value: "light", label: "Clair" },
+  { value: "dark", label: "Sombre" },
+  { value: "auto", label: "Selon le thème" },
+];
 
 const COLORS = [
   { value: "theme", label: "Couleur du thème" },
@@ -715,6 +939,10 @@ const DETECT_ROWS = [
   ["lock", "Verrouillage", "mdi:lock"],
   ["charging", "Charge", "mdi:ev-plug-type2"],
   ["engine", "Moteur", "mdi:engine"],
+  ["address", "Adresse", "mdi:map-marker-radius"],
+  ["odometer", "Kilométrage", "mdi:counter"],
+  ["consumption_fuel", "Conso essence", "mdi:gas-station"],
+  ["consumption_electric", "Conso électrique", "mdi:lightning-bolt"],
 ];
 
 class AutosCardHaEditor extends HTMLElement {
@@ -751,6 +979,8 @@ class AutosCardHaEditor extends HTMLElement {
         ],
       },
       { name: "map_zoom", selector: { number: { min: 10, max: 19, step: 1, mode: "slider" } } },
+      { name: "map_theme", selector: { select: { options: MAP_THEMES, mode: "dropdown" } } },
+      { name: "show_address", selector: { boolean: {} } },
       {
         type: "expandable",
         name: "",
@@ -766,6 +996,15 @@ class AutosCardHaEditor extends HTMLElement {
           entity("lock", ["lock", "binary_sensor"]),
           entity("charging", ["sensor", "binary_sensor"]),
           entity("engine", "binary_sensor"),
+          entity("climate_on", "button"),
+          entity("climate_off", "button"),
+          entity("climate_state", ["binary_sensor", "switch", "climate"]),
+          { name: "climate_timeout", selector: { number: { min: 1, max: 60, step: 1, mode: "box", unit_of_measurement: "min" } } },
+          entity("address", "sensor"),
+          { name: "geocode", selector: { boolean: {} } },
+          entity("odometer", "sensor"),
+          entity("consumption_fuel", "sensor"),
+          entity("consumption_electric", "sensor"),
         ],
       },
     ];
@@ -817,6 +1056,7 @@ class AutosCardHaEditor extends HTMLElement {
       DETECT_ROWS.map(([k, label, icon]) => row(icon, label, d[k])).join("") +
       row("mdi:car-door", `Portes et ouvrants (${doors}/6)`, doors ? `${doors} trouvé(s)` : "") +
       row("mdi:window-open-variant", "Vitres", d.windows.length ? `${d.windows.length} trouvée(s)` : "") +
+      row("mdi:air-conditioner", "Climatisation (bouton unique)", d.climate_on && d.climate_off ? (d.climate_state ? "avec état" : "sans état") : "") +
       row("mdi:view-grid", "Tuiles d'infos", d.stats.length ? `${d.stats.length} trouvée(s)` : "") +
       row("mdi:gesture-tap-button", "Boutons d'action", d.actions.length ? `${d.actions.length} trouvé(s)` : "");
   }
