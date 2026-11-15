@@ -144,6 +144,7 @@ La mini-carte est un plan clair avec l'adresse en bas à gauche.
 
 - `map_theme` : `light` (par défaut), `dark` ou `auto` (suit le thème de Home Assistant).
 - `address` : capteur dont l'état est l'adresse, par exemple `Rue de la Délivrance 35, 68440 Habsheim`. Il est détecté automatiquement s'il existe sur l'appareil. La première partie s'affiche en gros, la suite en dessous en capitales, sans le code postal.
+- `map_label` : texte du marqueur. `icon` (par défaut) affiche l'icône de l'entité au lieu des initiales « VXE » ; `name` remet le nom. Pour choisir l'icône, change-la dans Home Assistant (Paramètres > Appareils et services > Entités > ton `device_tracker` > Icône, par exemple `mdi:car-side`).
 - `show_address: false` masque l'adresse.
 - `geocode: true` (désactivé par défaut) cherche l'adresse sur OpenStreetMap quand il n'y a aucun capteur d'adresse. Le navigateur envoie alors la position de la voiture, arrondie à environ 10 m, à `nominatim.openstreetmap.org`. La réponse est mise en cache dans le navigateur.
 

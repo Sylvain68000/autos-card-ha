@@ -474,7 +474,7 @@ class AutosCardHa extends HTMLElement {
       .then((h) =>
         h.createCardElement({
           type: "map",
-          entities: [{ entity: loc }],
+          entities: [{ entity: loc, label_mode: c.map_label || "icon" }],
           default_zoom: c.map_zoom,
           hours_to_show: 0,
           aspect_ratio: "20:9",
