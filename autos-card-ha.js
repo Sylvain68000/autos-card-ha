@@ -613,15 +613,40 @@ class AutosCardHa extends HTMLElement {
     }
   }
 
+  // Les images choisies dans l'éditeur sont des identifiants media-source://, convertis en URL signée par Home Assistant.
+  _img(src) {
+    if (!src || !String(src).startsWith("media-source://")) return src || "";
+    const m = (this._imgs = this._imgs || {});
+    const e = m[src];
+    const now = Date.now();
+    if (e && e.url && now < e.exp) return e.url;
+    if (!(e && e.busy) && !(e && now < e.retry) && this._hass && this._hass.callWS) {
+      m[src] = { url: e ? e.url : "", exp: 0, busy: true };
+      this._hass
+        .callWS({ type: "media_source/resolve_media", media_content_id: src, expires: 6 * 3600 })
+        .then((r) => {
+          m[src] = { url: r.url, exp: Date.now() + 5 * 3600 * 1000 };
+          this._render();
+        })
+        .catch(() => {
+          m[src] = { url: "", exp: 0, retry: Date.now() + 60000 };
+        });
+    }
+    return (m[src] && m[src].url) || "";
+  }
+
   _banner() {
     const c = this._eff;
-    if (c.image && this._useStack()) {
+    const main = this._img(c.image);
+    if (main && this._useStack()) {
       const layers = Object.entries(c.open_images)
-        .map(([k, srcImg]) => `<img class="layer${(c.doors || {})[k] && this._isOpen(c.doors[k]) ? " on" : ""}" src="${srcImg}" alt="">`)
+        .map(([k, srcImg]) => [k, this._img(srcImg)])
+        .filter(([, u]) => u)
+        .map(([k, u]) => `<img class="layer${(c.doors || {})[k] && this._isOpen(c.doors[k]) ? " on" : ""}" src="${u}" alt="">`)
         .join("");
-      return `<div class="banner"><div class="stack"><img src="${c.image}" alt="${c.name || "Voiture"}">${layers}</div></div>`;
+      return `<div class="banner"><div class="stack"><img src="${main}" alt="${c.name || "Voiture"}">${layers}</div></div>`;
     }
-    if (c.image) return `<div class="banner"><img src="${c.image}" alt="${c.name || "Voiture"}"></div>`;
+    if (main) return `<div class="banner"><img src="${main}" alt="${c.name || "Voiture"}"></div>`;
     return `<div class="banner">${this._sideSvg()}</div>`;
   }
 
@@ -891,7 +916,13 @@ class AutosCardHa extends HTMLElement {
 const LABELS = {
   device: "Véhicule détecté",
   name: "Nom affiché",
-  image: "Photo de la voiture (ex. /local/volvo.png)",
+  image: "Photo de la voiture (choisir dans les médias)",
+  oi_front_left: "Porte avant gauche ouverte",
+  oi_front_right: "Porte avant droite ouverte",
+  oi_rear_left: "Porte arrière gauche ouverte",
+  oi_rear_right: "Porte arrière droite ouverte",
+  oi_tailgate: "Coffre ouvert",
+  oi_hood: "Capot ouvert",
   body_color: "Couleur de l'illustration",
   map: "Afficher la carte",
   map_zoom: "Zoom de la carte",
@@ -922,6 +953,9 @@ const LABELS = {
 };
 
 const EDITOR_DEFAULTS = { map: true, show_address: true, geocode: false, map_theme: "light", show_banner: true, show_chips: true, show_stats: true, show_actions: true, map_zoom: 15, body_color: "theme", device: "none" };
+
+const MEDIA = { media: { accept: ["image/*"] } };
+const OI_KEYS = ["front_left", "front_right", "rear_left", "rear_right", "tailgate", "hood"];
 
 const MAP_THEMES = [
   { value: "light", label: "Clair" },
@@ -973,7 +1007,14 @@ class AutosCardHaEditor extends HTMLElement {
     return [
       { name: "device", selector: { select: { options, mode: "dropdown" } } },
       { name: "name", selector: { text: {} } },
-      { name: "image", selector: { text: {} } },
+      { name: "image", selector: MEDIA },
+      {
+        type: "expandable",
+        name: "",
+        title: "Photos avec une ouverture (facultatif)",
+        flatten: true,
+        schema: OI_KEYS.map((k) => ({ name: "oi_" + k, selector: MEDIA })),
+      },
       { name: "body_color", selector: { select: { options: COLORS, mode: "dropdown" } } },
       {
         type: "grid",
@@ -1041,10 +1082,19 @@ class AutosCardHaEditor extends HTMLElement {
     const key = JSON.stringify([this._config, vehicles.map((v) => v.id)]);
     if (key === this._key) return;
     this._key = key;
-    this._form.data = { ...EDITOR_DEFAULTS, ...this._config };
+    this._form.data = this._formData(this._config);
     this._form.schema = this._schema(vehicles);
     this._form.computeLabel = (s) => LABELS[s.name] || s.name;
     this._renderDetected();
+  }
+
+  _formData(cfg) {
+    const d = { ...EDITOR_DEFAULTS, ...cfg };
+    const asMedia = (u) => (u ? { media_content_id: u, media_content_type: "image/*" } : undefined);
+    d.image = asMedia(cfg.image);
+    for (const k of OI_KEYS) d["oi_" + k] = asMedia((cfg.open_images || {})[k]);
+    delete d.open_images;
+    return d;
   }
 
   _renderDetected() {
@@ -1073,6 +1123,16 @@ class AutosCardHaEditor extends HTMLElement {
     ev.stopPropagation();
     const prev = this._config;
     const v = { ...prev, ...ev.detail.value };
+    const idOf = (m) => (m && typeof m === "object" ? m.media_content_id || "" : m || "");
+    v.image = idOf(v.image);
+    const oi = {};
+    for (const k of OI_KEYS) {
+      const u = idOf(v["oi_" + k]);
+      if (u) oi[k] = u;
+      delete v["oi_" + k];
+    }
+    if (Object.keys(oi).length) v.open_images = oi;
+    else delete v.open_images;
     for (const k of Object.keys(v)) {
       if (v[k] === "" || v[k] === undefined || v[k] === null) delete v[k];
     }
@@ -1087,7 +1147,7 @@ class AutosCardHaEditor extends HTMLElement {
     }
     v.type = prev.type || "custom:autos-card-ha";
     this._config = v;
-    this._form.data = { ...EDITOR_DEFAULTS, ...v };
+    this._form.data = this._formData(v);
     this._renderDetected();
     this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: v }, bubbles: true, composed: true }));
   }

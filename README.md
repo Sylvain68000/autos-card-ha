@@ -153,7 +153,9 @@ La mini-carte est un plan clair avec l'adresse en bas à gauche.
 
 Sans réglage, la carte dessine une voiture générique vue de dessus : les portes pivotent sur leurs charnières, le capot et le hayon s'ouvrent, et la couleur se change avec `body_color`.
 
-Pour afficher des images de ta propre voiture, dépose-les dans `/config/www/` (elles sont alors servies sous `/local/`) puis indique :
+Dans l'éditeur visuel, les champs **Photo de la voiture** et **Photos avec une ouverture** ouvrent le navigateur de médias de Home Assistant : tu choisis directement une image déjà stockée (dossier `media`, ou image téléversée depuis le sélecteur). La carte enregistre un identifiant `media-source://...` qu'elle convertit elle-même en adresse temporaire à chaque affichage.
+
+Tu peux aussi, en YAML, utiliser des fichiers de `/config/www/` (servis sous `/local/`) :
 
 ```yaml
 type: custom:autos-card-ha
