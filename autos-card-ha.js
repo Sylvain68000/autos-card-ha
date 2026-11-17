@@ -45,6 +45,8 @@ ha-card { padding: 16px; overflow: hidden; }
 .addr { position: absolute; left: 10px; right: 58px; bottom: 10px; z-index: 1001; display: flex; align-items: center; gap: 10px; padding: 9px 14px 9px 10px; width: fit-content; max-width: calc(100% - 68px); border-radius: 14px; background: color-mix(in srgb, var(--card-background-color, #fff) 82%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 2px 10px rgba(0,0,0,.22); pointer-events: none; color: var(--primary-text-color); }
 .nav { position: absolute; right: 10px; bottom: 10px; z-index: 1001; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--primary-color); color: #fff; box-shadow: 0 2px 10px rgba(0,0,0,.3); text-decoration: none; cursor: pointer; }
 .nav ha-icon { --mdc-icon-size: 22px; }
+[data-info] { cursor: pointer; }
+[data-info]:active { opacity: .7; }
 .addr:empty { display: none; }
 .addr ha-icon { --mdc-icon-size: 22px; flex: 0 0 auto; color: var(--primary-color); }
 .addr .l1 { font-size: 14px; font-weight: 500; line-height: 1.25; }
@@ -340,7 +342,12 @@ class AutosCardHa extends HTMLElement {
         if (!cl.disabled) this._toggleClimate();
         return;
       }
+      const inf = e.target.closest("[data-info]");
       const b = e.target.closest("[data-entity]");
+      if (inf && !b) {
+        this.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId: inf.dataset.info }, bubbles: true, composed: true }));
+        return;
+      }
       if (!b || b.disabled) return;
       const id = b.dataset.entity;
       if (b.dataset.confirm === "1" && this._armed !== id) {
@@ -725,11 +732,11 @@ class AutosCardHa extends HTMLElement {
     if (!id) return "";
     const n = this._num(id);
     if (n === null) {
-      return `<div class="bar"><div class="top"><span>${label}</span><b class="na">n/d</b></div><div class="track"></div></div>`;
+      return `<div class="bar" data-info="${id}"><div class="top"><span>${label}</span><b class="na">n/d</b></div><div class="track"></div></div>`;
     }
     const pct = Math.max(0, Math.min(100, (n / max) * 100));
     const unit = unitOverride || this._state(id).attributes.unit_of_measurement || "";
-    return `<div class="bar"><div class="top"><span>${label}</span><b>${Math.round(n)} ${unit}</b></div>
+    return `<div class="bar" data-info="${id}"><div class="top"><span>${label}</span><b>${Math.round(n)} ${unit}</b></div>
       <div class="track"><div class="fill" style="width:${pct}%;background:${this._color(pct)}"></div></div></div>`;
   }
 
@@ -818,10 +825,10 @@ class AutosCardHa extends HTMLElement {
     if (c.lock && this._state(c.lock)) {
       const s = this._state(c.lock);
       if (!this._valid(s)) {
-        chips.push(`<div class="chip off"><ha-icon icon="mdi:lock-question"></ha-icon>Verrou indisponible</div>`);
+        chips.push(`<div class="chip off" data-info="${c.lock}"><ha-icon icon="mdi:lock-question"></ha-icon>Verrou indisponible</div>`);
       } else {
         const locked = c.lock.startsWith("lock.") ? s.state === "locked" : s.state === "off";
-        chips.push(`<div class="chip ${locked ? "ok" : "warn"}"><ha-icon icon="mdi:${locked ? "lock" : "lock-open"}"></ha-icon>${locked ? "Verrouillée" : "Déverrouillée"}</div>`);
+        chips.push(`<div class="chip ${locked ? "ok" : "warn"}" data-info="${c.lock}"><ha-icon icon="mdi:${locked ? "lock" : "lock-open"}"></ha-icon>${locked ? "Verrouillée" : "Déverrouillée"}</div>`);
       }
     }
     if (c.charging && this._state(c.charging)) {
@@ -830,25 +837,25 @@ class AutosCardHa extends HTMLElement {
       if (!this._valid(s)) t = "Charge indisponible";
       else if (c.charging.startsWith("binary_sensor.")) t = s.state === "on" ? "En charge" : "Pas en charge";
       else t = "Charge : " + this._fmt(c.charging).toLowerCase();
-      chips.push(`<div class="chip ${this._valid(s) ? "" : "off"}"><ha-icon icon="mdi:ev-plug-type2"></ha-icon>${t}</div>`);
+      chips.push(`<div class="chip ${this._valid(s) ? "" : "off"}" data-info="${c.charging}"><ha-icon icon="mdi:ev-plug-type2"></ha-icon>${t}</div>`);
     }
     if (c.engine && this._state(c.engine)) {
       const s = this._state(c.engine);
       chips.push(
         this._valid(s)
-          ? `<div class="chip"><ha-icon icon="mdi:engine"></ha-icon>${s.state === "on" ? "Moteur allumé" : "Moteur éteint"}</div>`
-          : `<div class="chip off"><ha-icon icon="mdi:engine"></ha-icon>Moteur indisponible</div>`
+          ? `<div class="chip" data-info="${c.engine}"><ha-icon icon="mdi:engine"></ha-icon>${s.state === "on" ? "Moteur allumé" : "Moteur éteint"}</div>`
+          : `<div class="chip off" data-info="${c.engine}"><ha-icon icon="mdi:engine"></ha-icon>Moteur indisponible</div>`
       );
     }
-    if (c.climate_on && this._climIsOn()) chips.push(`<div class="chip ok"><ha-icon icon="mdi:air-conditioner"></ha-icon>Clim en marche</div>`);
+    if (c.climate_on && this._climIsOn()) chips.push(`<div class="chip ok"${c.climate_state ? ` data-info="${c.climate_state}"` : ""}><ha-icon icon="mdi:air-conditioner"></ha-icon>Clim en marche</div>`);
     const names = { front_left: "Porte avant gauche", front_right: "Porte avant droite", rear_left: "Porte arrière gauche", rear_right: "Porte arrière droite", tailgate: "Coffre", hood: "Capot" };
     for (const k of Object.keys(c.doors || {})) {
-      if (this._isOpen(c.doors[k])) chips.push(`<div class="chip warn"><ha-icon icon="mdi:car-door"></ha-icon>${names[k] || k}</div>`);
+      if (this._isOpen(c.doors[k])) chips.push(`<div class="chip warn" data-info="${c.doors[k]}"><ha-icon icon="mdi:car-door"></ha-icon>${names[k] || k}</div>`);
     }
     for (const w of c.windows || []) {
       const id = typeof w === "string" ? w : w.entity;
       const nm = typeof w === "string" ? id : w.name || id;
-      if (this._isOpen(id)) chips.push(`<div class="chip warn"><ha-icon icon="mdi:window-open-variant"></ha-icon>${nm}</div>`);
+      if (this._isOpen(id)) chips.push(`<div class="chip warn" data-info="${id}"><ha-icon icon="mdi:window-open-variant"></ha-icon>${nm}</div>`);
     }
 
     const statList = [
@@ -858,7 +865,7 @@ class AutosCardHa extends HTMLElement {
       ...(c.stats || []),
     ];
     const stats = statList
-      .map((s) => `<div class="stat"><div class="l">${s.icon ? `<ha-icon icon="${s.icon}"></ha-icon>` : ""}${s.name || s.entity}</div><div class="v ${this._valid(this._state(s.entity)) ? "" : "na"}">${this._fmt(s.entity)}</div></div>`)
+      .map((s) => `<div class="stat" data-info="${s.entity}"><div class="l">${s.icon ? `<ha-icon icon="${s.icon}"></ha-icon>` : ""}${s.name || s.entity}</div><div class="v ${this._valid(this._state(s.entity)) ? "" : "na"}">${this._fmt(s.entity)}</div></div>`)
       .join("");
 
     const acts = (c.actions || [])
@@ -887,15 +894,15 @@ class AutosCardHa extends HTMLElement {
 
     this.shadowRoot.innerHTML = `<style>${STYLE}</style>
     <ha-card>
-      <div class="head"><div class="name">${c.name || "Voiture"}</div>${locTxt ? `<div class="loc"><ha-icon icon="mdi:map-marker" style="--mdc-icon-size:14px"></ha-icon>${locTxt}</div>` : ""}</div>
+      <div class="head"><div class="name">${c.name || "Voiture"}</div>${locTxt ? `<div class="loc" data-info="${c.location}"><ha-icon icon="mdi:map-marker" style="--mdc-icon-size:14px"></ha-icon>${locTxt}</div>` : ""}</div>
       ${c.show_banner !== false ? this._banner() : ""}
       <div class="hero">
         ${c.show_top_view ?? !this._useStack() ? `<div class="car">${this._carSvg()}</div>` : ""}
         <div class="bars">
           ${this._bar("Batterie", c.battery, 100, "%")}
           ${this._bar("Carburant", c.fuel, fuelMax)}
-          ${c.range_electric ? `<div class="bar"><div class="top"><span>Autonomie électrique</span><b>${this._fmt(c.range_electric)}</b></div></div>` : ""}
-          ${c.range_fuel ? `<div class="bar"><div class="top"><span>Autonomie essence</span><b>${this._fmt(c.range_fuel)}</b></div></div>` : ""}
+          ${c.range_electric ? `<div class="bar" data-info="${c.range_electric}"><div class="top"><span>Autonomie électrique</span><b>${this._fmt(c.range_electric)}</b></div></div>` : ""}
+          ${c.range_fuel ? `<div class="bar" data-info="${c.range_fuel}"><div class="top"><span>Autonomie essence</span><b>${this._fmt(c.range_fuel)}</b></div></div>` : ""}
         </div>
       </div>
       ${c.show_chips !== false && chips.length ? `<div class="chips">${chips.join("")}</div>` : ""}

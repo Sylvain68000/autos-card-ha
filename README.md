@@ -127,6 +127,10 @@ actions:
     icon: mdi:battery-charging
 ```
 
+## Graphiques d'historique
+
+Un clic sur une barre (batterie, carburant, autonomies), un statut (verrou, charge, moteur, portes, vitres), une tuile d'info ou la position ouvre la fenêtre de détails de Home Assistant, avec le graphique d'historique de l'entité. Rien à configurer.
+
 ## Bouton de climatisation unique
 
 Un seul bouton remplace « Activer » et « Couper » : il affiche **Activer la clim** quand elle est éteinte et **Couper la clim** quand elle tourne, avec une pastille « Clim en marche ».
