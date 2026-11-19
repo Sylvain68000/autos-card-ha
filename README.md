@@ -127,6 +127,24 @@ actions:
     icon: mdi:battery-charging
 ```
 
+## Plusieurs véhicules dans la même carte
+
+Une seule carte peut afficher plusieurs véhicules, avec un sélecteur en haut (un onglet par véhicule). Chaque onglet a son illustration, ses barres, ses statuts, son plan, son adresse et ses boutons. Le dernier véhicule choisi est mémorisé dans le navigateur.
+
+Dans l'éditeur, le champ **Plusieurs véhicules dans la même carte (onglets)** permet de les choisir. En YAML :
+
+```yaml
+type: custom:autos-card-ha
+vehicles:
+  - device: 0123456789abcdef0123456789abcdef
+    name: Volvo XC60
+  - device: fedcba9876543210fedcba9876543210
+    name: Peugeot e-208
+    image: /local/peugeot.png
+```
+
+Chaque entrée accepte les mêmes options qu'une carte seule (`name`, `image`, `body_color`, `location`, `actions`...). Les options placées à côté de `vehicles` (par exemple `map_theme`) s'appliquent à tous les onglets. Une simple liste d'identifiants fonctionne aussi, et `vehicles: auto` crée un onglet par véhicule détecté.
+
 ## Graphiques d'historique
 
 Un clic sur une barre (batterie, carburant, autonomies), un statut (verrou, charge, moteur, portes, vitres), une tuile d'info ou la position ouvre la fenêtre de détails de Home Assistant, avec le graphique d'historique de l'entité. Rien à configurer.
@@ -198,6 +216,7 @@ open_images:
 | `body_color` | Couleur de la carrosserie de l'illustration (par exemple `#1e88e5`) |
 | `map` | `false` pour masquer la mini-carte (affichée par défaut dès que `location` fournit une position) |
 | `map_zoom` | Niveau de zoom de la mini-carte (15 par défaut) |
+| `vehicles` | Plusieurs véhicules dans la même carte, voir plus haut |
 | `device` | Appareil du véhicule : active la détection automatique de toutes les entités |
 | `show_banner`, `show_chips`, `show_stats`, `show_actions` | `false` pour masquer l'illustration, les statuts, les tuiles ou les boutons |
 | `odometer` | Capteur de kilométrage, affiché en première tuile |

@@ -1,9 +1,12 @@
 /* autos-card-ha - carte Home Assistant visuelle pour voitures */
-const VERSION = "0.5.0";
+const VERSION = "0.6.0";
 
 const STYLE = `
 :host { display: block; }
 ha-card { padding: 16px; overflow: hidden; }
+.tabs { display: flex; gap: 6px; margin-bottom: 12px; padding: 4px; border-radius: 14px; background: var(--secondary-background-color); }
+.tab { flex: 1 1 0; min-width: 0; border: none; border-radius: 10px; padding: 8px 10px; background: transparent; color: var(--secondary-text-color); font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: background .2s, color .2s; }
+.tab.on { background: var(--card-background-color, #fff); color: var(--primary-text-color); box-shadow: 0 1px 4px rgba(0,0,0,.18); }
 .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .name { font-size: 20px; font-weight: 500; color: var(--primary-text-color); }
 .loc { font-size: 13px; color: var(--secondary-text-color); display: flex; align-items: center; gap: 4px; }
@@ -342,6 +345,11 @@ class AutosCardHa extends HTMLElement {
         if (!cl.disabled) this._toggleClimate();
         return;
       }
+      const tab = e.target.closest("[data-tab]");
+      if (tab) {
+        this._selectVehicle(Number(tab.dataset.tab));
+        return;
+      }
       const inf = e.target.closest("[data-info]");
       const b = e.target.closest("[data-entity]");
       if (inf && !b) {
@@ -378,7 +386,55 @@ class AutosCardHa extends HTMLElement {
 
   setConfig(config) {
     if (!config) throw new Error("Configuration manquante");
-    this._config = { ...config };
+    this._base = { ...config };
+    this._vlist = null;
+    this._sel = 0;
+    this._setupVehicles();
+    this._applyVehicle();
+  }
+
+  _vehicleList() {
+    const v = this._base.vehicles;
+    if (Array.isArray(v) && v.length) return v.map((x) => (typeof x === "string" ? { device: x } : { ...x })).filter((x) => x.device || x.location);
+    if (v === "auto" && this._hass) return listVehicles(this._hass).map((x) => ({ device: x.id }));
+    return null;
+  }
+
+  _setupVehicles() {
+    const list = this._vehicleList();
+    if (list && list.length > 1) {
+      this._vlist = list;
+      let i = 0;
+      try {
+        const saved = localStorage.getItem("autos-card-ha:sel:" + list.map((x) => x.device || x.location).join(","));
+        i = list.findIndex((x) => (x.device || x.location) === saved);
+      } catch (e) {
+        i = 0;
+      }
+      this._sel = i > 0 ? i : 0;
+    } else {
+      this._vlist = null;
+      this._sel = 0;
+    }
+  }
+
+  _selectVehicle(i) {
+    if (!this._vlist || i === this._sel || !this._vlist[i]) return;
+    this._sel = i;
+    try {
+      const l = this._vlist;
+      localStorage.setItem("autos-card-ha:sel:" + l.map((x) => x.device || x.location).join(","), l[i].device || l[i].location);
+    } catch (e) {
+      /* ignore */
+    }
+    this._armed = null;
+    this._applyVehicle();
+  }
+
+  _applyVehicle() {
+    const { vehicles, ...rest } = this._base;
+    if (this._vlist) delete rest.name;
+    this._config = { ...rest, ...((this._vlist && this._vlist[this._sel]) || {}) };
     this._mapEl = null;
     this._mapFor = null;
     this._mapPending = false;
@@ -395,6 +451,10 @@ class AutosCardHa extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     if (!this._config) return;
+    if (this._base.vehicles === "auto" && !this._vlist) {
+      this._setupVehicles();
+      if (this._vlist) this._applyVehicle();
+    }
     this._eff = this._effective();
     const sig = this._signature();
     if (sig !== this._sig) {
@@ -446,6 +506,8 @@ class AutosCardHa extends HTMLElement {
     ids.push(c.climate_state, c.climate_on, c.climate_off, typeof c.address === "string" ? c.address : null, c.odometer, c.consumption_fuel, c.consumption_electric);
     return (
       (c.name || "") +
+      "~" +
+      this._sel +
       "@" +
       this._mapLocations().join(",") +
       "#" +
@@ -665,6 +727,13 @@ class AutosCardHa extends HTMLElement {
         });
     }
     return (m[src] && m[src].url) || "";
+  }
+
+  _tabsHtml() {
+    if (!this._vlist) return "";
+    return `<div class="tabs">${this._vlist
+      .map((v, i) => `<button class="tab ${i === this._sel ? "on" : ""}" data-tab="${i}">${esc(v.name || (v.device ? deviceName(this._hass, v.device) : v.location))}</button>`)
+      .join("")}</div>`;
   }
 
   _banner() {
@@ -919,6 +988,7 @@ class AutosCardHa extends HTMLElement {
 
     this.shadowRoot.innerHTML = `<style>${STYLE}</style>
     <ha-card>
+      ${this._tabsHtml()}
       <div class="head"><div class="name">${c.name || "Voiture"}</div>${locTxt ? `<div class="loc" data-info="${c.location}"><ha-icon icon="mdi:map-marker" style="--mdc-icon-size:14px"></ha-icon>${locTxt}</div>` : ""}</div>
       ${c.show_banner !== false ? this._banner() : ""}
       <div class="hero">
@@ -974,6 +1044,7 @@ const LABELS = {
   map_theme: "Style du plan",
   map_all_vehicles: "Afficher tous les véhicules détectés sur le plan",
   map_extra: "Autres positions à afficher sur le plan",
+  vehicles: "Plusieurs véhicules dans la même carte (onglets)",
   show_address: "Afficher l'adresse sur le plan",
   address: "Capteur d'adresse (détecté par défaut)",
   geocode: "Chercher l'adresse via OpenStreetMap si aucun capteur",
@@ -1040,6 +1111,7 @@ class AutosCardHaEditor extends HTMLElement {
     if (cur && !vehicles.some((v) => v.id === cur)) options.push({ value: cur, label: deviceName(this._hass, cur) });
     return [
       { name: "device", selector: { select: { options, mode: "dropdown" } } },
+      { name: "vehicles", selector: { select: { multiple: true, options: options.filter((o) => o.value !== "none"), mode: "dropdown" } } },
       { name: "name", selector: { text: {} } },
       { name: "image", selector: MEDIA },
       {
@@ -1126,6 +1198,7 @@ class AutosCardHaEditor extends HTMLElement {
 
   _formData(cfg) {
     const d = { ...EDITOR_DEFAULTS, ...cfg };
+    d.vehicles = Array.isArray(cfg.vehicles) ? cfg.vehicles.map((x) => (typeof x === "string" ? x : x.device)).filter(Boolean) : [];
     const asMedia = (u) => (u ? { media_content_id: u, media_content_type: "image/*" } : undefined);
     d.image = asMedia(cfg.image);
     for (const k of OI_KEYS) d["oi_" + k] = asMedia((cfg.open_images || {})[k]);
@@ -1159,6 +1232,14 @@ class AutosCardHaEditor extends HTMLElement {
     ev.stopPropagation();
     const prev = this._config;
     const v = { ...prev, ...ev.detail.value };
+    if (prev.vehicles === "auto" && !(ev.detail.value.vehicles || []).length) v.vehicles = "auto";
+    else if (Array.isArray(ev.detail.value.vehicles)) {
+      const old = Array.isArray(prev.vehicles) ? prev.vehicles : [];
+      const sel = ev.detail.value.vehicles;
+      const same = old.map((x) => (typeof x === "string" ? x : x.device)).join() === sel.join();
+      v.vehicles = same ? old : sel.map((id) => old.find((x) => typeof x === "object" && x.device === id) || id);
+      if (!v.vehicles.length) delete v.vehicles;
+    }
     const idOf = (m) => (m && typeof m === "object" ? m.media_content_id || "" : m || "");
     v.image = idOf(v.image);
     const oi = {};
