@@ -446,6 +446,8 @@ class AutosCardHa extends HTMLElement {
     ids.push(c.climate_state, c.climate_on, c.climate_off, typeof c.address === "string" ? c.address : null, c.odometer, c.consumption_fuel, c.consumption_electric);
     return (
       (c.name || "") +
+      "@" +
+      this._mapLocations().join(",") +
       "#" +
       ids
         .filter(Boolean)
@@ -462,10 +464,34 @@ class AutosCardHa extends HTMLElement {
     return !!s && s.attributes.latitude !== undefined && s.attributes.longitude !== undefined;
   }
 
+  // Position de la voiture principale + autres véhicules (liste manuelle ou détection automatique).
+  _mapLocations() {
+    const c = this._eff;
+    const out = [c.location];
+    const has = (id) => {
+      const s = this._state(id);
+      return !!s && s.attributes.latitude !== undefined && s.attributes.longitude !== undefined;
+    };
+    const add = (id) => {
+      if (id && !out.includes(id) && has(id)) out.push(id);
+    };
+    (Array.isArray(c.map_extra) ? c.map_extra : []).forEach(add);
+    if (c.map_all_vehicles !== false && this._hass) {
+      try {
+        listVehicles(this._hass).forEach((v) => add(v.detected && v.detected.location));
+      } catch (e) {
+        /* ignore */
+      }
+    }
+    return out;
+  }
+
   _ensureMap() {
     const c = this._eff;
     if (c.map === false || !c.location || !this._hasPosition()) return;
-    if (this._mapEl && this._mapFor !== c.location) {
+    const locs = this._mapLocations();
+    const locKey = locs.join(",");
+    if (this._mapEl && this._mapFor !== locKey) {
       this._mapEl = null;
       this._mapPending = false;
     }
@@ -475,13 +501,12 @@ class AutosCardHa extends HTMLElement {
     }
     if (this._mapPending || !window.loadCardHelpers) return;
     this._mapPending = true;
-    const loc = c.location;
     window
       .loadCardHelpers()
       .then((h) =>
         h.createCardElement({
           type: "map",
-          entities: [{ entity: loc, label_mode: c.map_label || "icon" }],
+          entities: locs.map((entity) => ({ entity, label_mode: c.map_label || (locs.length > 1 ? "name" : "icon") })),
           default_zoom: c.map_zoom,
           hours_to_show: 0,
           aspect_ratio: "20:9",
@@ -491,7 +516,7 @@ class AutosCardHa extends HTMLElement {
       .then((el) => {
         el.hass = this._hass;
         this._mapEl = el;
-        this._mapFor = loc;
+        this._mapFor = locKey;
         this._attachMap();
       })
       .catch(() => {
@@ -947,6 +972,8 @@ const LABELS = {
   charging: "Charge",
   engine: "Moteur",
   map_theme: "Style du plan",
+  map_all_vehicles: "Afficher tous les véhicules détectés sur le plan",
+  map_extra: "Autres positions à afficher sur le plan",
   show_address: "Afficher l'adresse sur le plan",
   address: "Capteur d'adresse (détecté par défaut)",
   geocode: "Chercher l'adresse via OpenStreetMap si aucun capteur",
@@ -959,7 +986,7 @@ const LABELS = {
   climate_timeout: "Durée de la clim sans état (minutes)",
 };
 
-const EDITOR_DEFAULTS = { map: true, show_address: true, geocode: false, map_theme: "light", show_banner: true, show_chips: true, show_stats: true, show_actions: true, map_zoom: 15, body_color: "theme", device: "none" };
+const EDITOR_DEFAULTS = { map: true, show_address: true, geocode: false, map_theme: "light", map_all_vehicles: true, show_banner: true, show_chips: true, show_stats: true, show_actions: true, map_zoom: 15, body_color: "theme", device: "none" };
 
 const MEDIA = { media: { accept: ["image/*"] } };
 const OI_KEYS = ["front_left", "front_right", "rear_left", "rear_right", "tailgate", "hood"];
@@ -1037,6 +1064,8 @@ class AutosCardHaEditor extends HTMLElement {
       { name: "map_zoom", selector: { number: { min: 10, max: 19, step: 1, mode: "slider" } } },
       { name: "map_theme", selector: { select: { options: MAP_THEMES, mode: "dropdown" } } },
       { name: "show_address", selector: { boolean: {} } },
+      { name: "map_all_vehicles", selector: { boolean: {} } },
+      { name: "map_extra", selector: { entity: { domain: "device_tracker", multiple: true } } },
       {
         type: "expandable",
         name: "",
