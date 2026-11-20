@@ -1,3 +1,5 @@
+<p align="center"><img src="images/logo.png" alt="Autos Card HA" width="140"></p>
+
 # Autos Card HA
 
 Carte Home Assistant visuelle pour suivre ses voitures : batterie, carburant, autonomie, portes et ouvertures (illustration vue de dessus), statuts et boutons d'action.
