@@ -1,5 +1,5 @@
 /* autos-card-ha - carte Home Assistant visuelle pour voitures */
-const VERSION = "0.6.1";
+const VERSION = "0.6.2";
 
 const STYLE = `
 :host { display: block; }
@@ -1281,7 +1281,7 @@ class AutosCardHaEditor extends HTMLElement {
     else if (Array.isArray(ev.detail.value.vehicles)) {
       const old = Array.isArray(prev.vehicles) ? prev.vehicles : [];
       const sel = ev.detail.value.vehicles;
-      const same = old.map((x) => (typeof x === "string" ? x : x.device)).join() === sel.join();
+      const same = old.map((x) => (typeof x === "string" ? x : x.device)).filter(Boolean).join() === sel.join();
       v.vehicles = same ? old : sel.map((id) => old.find((x) => typeof x === "object" && x.device === id) || id);
       if (!v.vehicles.length) delete v.vehicles;
     }
