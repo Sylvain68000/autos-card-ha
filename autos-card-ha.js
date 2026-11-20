@@ -1,5 +1,5 @@
 /* autos-card-ha - carte Home Assistant visuelle pour voitures */
-const VERSION = "0.6.0";
+const VERSION = "0.6.1";
 
 const STYLE = `
 :host { display: block; }
@@ -1045,6 +1045,7 @@ const LABELS = {
   map_all_vehicles: "Afficher tous les véhicules détectés sur le plan",
   map_extra: "Autres positions à afficher sur le plan",
   vehicles: "Plusieurs véhicules dans la même carte (onglets)",
+  vehicle_edit: "Régler le véhicule",
   show_address: "Afficher l'adresse sur le plan",
   address: "Capteur d'adresse (détecté par défaut)",
   geocode: "Chercher l'adresse via OpenStreetMap si aucun capteur",
@@ -1059,6 +1060,8 @@ const LABELS = {
 
 const EDITOR_DEFAULTS = { map: true, show_address: true, geocode: false, map_theme: "light", map_all_vehicles: true, show_banner: true, show_chips: true, show_stats: true, show_actions: true, map_zoom: 15, body_color: "theme", device: "none" };
 
+// Réglages propres à chaque véhicule quand la carte a plusieurs onglets (le reste est commun).
+const PER_VEHICLE = ["name", "image", "open_images", "body_color", "location", "battery", "fuel", "fuel_max", "range_electric", "range_fuel", "lock", "charging", "engine", "climate_on", "climate_off", "climate_state", "climate_timeout", "address", "odometer", "consumption_fuel", "consumption_electric"];
 const MEDIA = { media: { accept: ["image/*"] } };
 const OI_KEYS = ["front_left", "front_right", "rear_left", "rear_right", "tailgate", "hood"];
 
@@ -1095,6 +1098,7 @@ const DETECT_ROWS = [
 class AutosCardHaEditor extends HTMLElement {
   setConfig(config) {
     this._config = { ...config };
+    if (Array.isArray(config.vehicles)) this._config.vehicles = config.vehicles.map((x) => (typeof x === "string" ? { device: x } : x));
     this._render();
   }
 
@@ -1109,9 +1113,19 @@ class AutosCardHaEditor extends HTMLElement {
     for (const v of vehicles) options.push({ value: v.id, label: v.name });
     const cur = this._config.device;
     if (cur && !vehicles.some((v) => v.id === cur)) options.push({ value: cur, label: deviceName(this._hass, cur) });
+    const vopts = options.filter((o) => o.value !== "none");
+    const multi = this._isMulti();
+    const head = multi
+      ? [
+          { name: "vehicles", selector: { select: { multiple: true, options: vopts, mode: "dropdown" } } },
+          { name: "vehicle_edit", selector: { select: { options: this._config.vehicles.map((x) => ({ value: x.device, label: x.name || deviceName(this._hass, x.device) })), mode: "dropdown" } } },
+        ]
+      : [
+          { name: "device", selector: { select: { options, mode: "dropdown" } } },
+          { name: "vehicles", selector: { select: { multiple: true, options: vopts, mode: "dropdown" } } },
+        ];
     return [
-      { name: "device", selector: { select: { options, mode: "dropdown" } } },
-      { name: "vehicles", selector: { select: { multiple: true, options: options.filter((o) => o.value !== "none"), mode: "dropdown" } } },
+      ...head,
       { name: "name", selector: { text: {} } },
       { name: "image", selector: MEDIA },
       {
@@ -1187,7 +1201,7 @@ class AutosCardHaEditor extends HTMLElement {
     const vehicles = listVehicles(this._hass);
     this._vehicles = vehicles;
     this._form.hass = this._hass;
-    const key = JSON.stringify([this._config, vehicles.map((v) => v.id)]);
+    const key = JSON.stringify([this._config, vehicles.map((v) => v.id), this._edit]);
     if (key === this._key) return;
     this._key = key;
     this._form.data = this._formData(this._config);
@@ -1196,9 +1210,31 @@ class AutosCardHaEditor extends HTMLElement {
     this._renderDetected();
   }
 
-  _formData(cfg) {
+  _isMulti() {
+    const l = this._config && this._config.vehicles;
+    return Array.isArray(l) && l.length > 1 && l.every((x) => x && typeof x === "object" && x.device);
+  }
+
+  _entry() {
+    const l = this._config.vehicles;
+    this._edit = Math.min(Math.max(0, this._edit || 0), l.length - 1);
+    return l[this._edit];
+  }
+
+  _formData(cfg0) {
+    let cfg = cfg0;
+    const multi = this._isMulti();
+    if (multi) {
+      const e = this._entry();
+      cfg = { ...cfg0 };
+      for (const k of PER_VEHICLE) delete cfg[k];
+      Object.assign(cfg, e);
+      cfg.vehicle_edit = e.device;
+      delete cfg.device;
+    }
     const d = { ...EDITOR_DEFAULTS, ...cfg };
-    d.vehicles = Array.isArray(cfg.vehicles) ? cfg.vehicles.map((x) => (typeof x === "string" ? x : x.device)).filter(Boolean) : [];
+    if (multi) delete d.device;
+    d.vehicles = Array.isArray(cfg0.vehicles) ? cfg0.vehicles.map((x) => (typeof x === "string" ? x : x.device)).filter(Boolean) : [];
     const asMedia = (u) => (u ? { media_content_id: u, media_content_type: "image/*" } : undefined);
     d.image = asMedia(cfg.image);
     for (const k of OI_KEYS) d["oi_" + k] = asMedia((cfg.open_images || {})[k]);
@@ -1231,7 +1267,16 @@ class AutosCardHaEditor extends HTMLElement {
   _changed(ev) {
     ev.stopPropagation();
     const prev = this._config;
-    const v = { ...prev, ...ev.detail.value };
+    const detail = ev.detail.value;
+    if (this._isMulti() && detail.vehicle_edit && detail.vehicle_edit !== this._entry().device) {
+      this._edit = Math.max(0, prev.vehicles.findIndex((x) => x.device === detail.vehicle_edit));
+      this._key = null;
+      this._form.data = this._formData(prev);
+      this._form.schema = this._schema(this._vehicles || []);
+      return;
+    }
+    const v = { ...prev, ...detail };
+    delete v.vehicle_edit;
     if (prev.vehicles === "auto" && !(ev.detail.value.vehicles || []).length) v.vehicles = "auto";
     else if (Array.isArray(ev.detail.value.vehicles)) {
       const old = Array.isArray(prev.vehicles) ? prev.vehicles : [];
@@ -1261,6 +1306,40 @@ class AutosCardHaEditor extends HTMLElement {
     if (v.device && v.device !== prev.device && !prev.name) {
       const veh = (this._vehicles || []).find((x) => x.id === v.device);
       if (veh) v.name = veh.name;
+    }
+    const wasMulti = this._isMulti();
+    const isList = Array.isArray(v.vehicles) && v.vehicles.length > 1;
+    if (isList) {
+      const list = v.vehicles.map((x) => (typeof x === "string" ? { device: x } : { ...x }));
+      if (!wasMulti) {
+        // passage en onglets : les réglages actuels vont au véhicule déjà choisi
+        const i = Math.max(0, list.findIndex((x) => x.device === prev.device));
+        for (const k of PER_VEHICLE) {
+          if (k in v && list[i][k] === undefined) list[i][k] = v[k];
+          delete v[k];
+        }
+        delete v.device;
+        this._edit = i;
+      } else {
+        const e = list[Math.min(this._edit || 0, list.length - 1)];
+        const cur = this._entry().device;
+        const target = list.find((x) => x.device === cur) || e;
+        for (const k of PER_VEHICLE) {
+          if (v[k] === undefined) delete target[k];
+          else target[k] = v[k];
+          delete v[k];
+        }
+        this._edit = Math.max(0, list.indexOf(target));
+      }
+      v.vehicles = list;
+    } else if (wasMulti && Array.isArray(v.vehicles) === false) {
+      // retour à un seul véhicule : on récupère les réglages du premier onglet restant
+      const keep = prev.vehicles.find((x) => !detail.vehicles || detail.vehicles.includes(x.device)) || prev.vehicles[0];
+      Object.assign(v, keep);
+    } else if (wasMulti && v.vehicles && v.vehicles.length === 1) {
+      const only = typeof v.vehicles[0] === "string" ? v.vehicles[0] : v.vehicles[0].device;
+      Object.assign(v, prev.vehicles.find((x) => x.device === only) || { device: only });
+      delete v.vehicles;
     }
     v.type = prev.type || "custom:autos-card-ha";
     this._config = v;
