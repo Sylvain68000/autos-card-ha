@@ -1,5 +1,5 @@
 /* autos-card-ha - carte Home Assistant visuelle pour voitures */
-const VERSION = "0.6.3";
+const VERSION = "0.6.4";
 
 const STYLE = `
 :host { display: block; }
@@ -1206,6 +1206,7 @@ class AutosCardHaEditor extends HTMLElement {
         this._edit = Number(b.dataset.i);
         this._key = null;
         this._render();
+        this._renderDetected();
       });
       this._form.addEventListener("value-changed", (e) => this._changed(e));
       this._built = true;
@@ -1268,7 +1269,7 @@ class AutosCardHaEditor extends HTMLElement {
   }
 
   _renderDetected() {
-    const did = this._config.device;
+    const did = this._isMulti() ? this._entry().device : this._config.device;
     if (!did) {
       this._det.innerHTML = this._vehicles.length
         ? `<div class="t">${this._vehicles.length} véhicule(s) détecté(s)</div>Choisis ton véhicule dans la liste pour remplir la carte automatiquement.`
