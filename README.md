@@ -133,7 +133,7 @@ actions:
 
 Une seule carte peut afficher plusieurs véhicules, avec un sélecteur en haut (un onglet par véhicule). Chaque onglet a son illustration, ses barres, ses statuts, son plan, son adresse et ses boutons. Le dernier véhicule choisi est mémorisé dans le navigateur.
 
-Dans l'éditeur, le champ **Plusieurs véhicules dans la même carte (onglets)** permet de les choisir. Le champ **Régler le véhicule** apparaît alors : il choisit l'onglet dont tu modifies le nom, la photo, la couleur et les entités. Le plan, les blocs affichés et le style sont communs. En YAML :
+Dans l'éditeur, le champ **Plusieurs véhicules dans la même carte (onglets)** permet de les choisir. Des boutons (un par véhicule) apparaissent alors dans l'éditeur : ils choisissent l'onglet dont tu modifies le nom, la photo, la couleur et les entités. Le plan, les blocs affichés et le style sont communs. En YAML :
 
 ```yaml
 type: custom:autos-card-ha

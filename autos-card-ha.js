@@ -1,5 +1,5 @@
 /* autos-card-ha - carte Home Assistant visuelle pour voitures */
-const VERSION = "0.6.2";
+const VERSION = "0.6.3";
 
 const STYLE = `
 :host { display: block; }
@@ -1118,7 +1118,6 @@ class AutosCardHaEditor extends HTMLElement {
     const head = multi
       ? [
           { name: "vehicles", selector: { select: { multiple: true, options: vopts, mode: "dropdown" } } },
-          { name: "vehicle_edit", selector: { select: { options: this._config.vehicles.map((x) => ({ value: x.device, label: x.name || deviceName(this._hass, x.device) })), mode: "dropdown" } } },
         ]
       : [
           { name: "device", selector: { select: { options, mode: "dropdown" } } },
@@ -1192,9 +1191,22 @@ class AutosCardHaEditor extends HTMLElement {
         .det .ok ha-icon:last-child { color: var(--success-color, #43a047); }
         .det .no { color: var(--disabled-text-color); }
         .det code { font-size: 12px; }
-      </style><ha-form></ha-form><div class="det"></div>`;
+        .vsel { margin: 4px 0 12px; padding: 10px 12px; border-radius: 12px; background: var(--secondary-background-color); }
+        .vsel .t { font-size: 13px; color: var(--secondary-text-color); margin-bottom: 8px; }
+        .vsel .b { display: flex; gap: 6px; flex-wrap: wrap; }
+        .vsel button { border: 1px solid var(--divider-color); border-radius: 18px; padding: 7px 14px; background: transparent; color: var(--primary-text-color); font: inherit; font-size: 14px; cursor: pointer; }
+        .vsel button.on { background: var(--primary-color); border-color: var(--primary-color); color: #fff; }
+      </style><ha-form></ha-form><div class="vsel" hidden></div><div class="det"></div>`;
       this._form = this.querySelector("ha-form");
       this._det = this.querySelector(".det");
+      this._vsel = this.querySelector(".vsel");
+      this._vsel.addEventListener("click", (e) => {
+        const b = e.target.closest("[data-i]");
+        if (!b || !this._isMulti()) return;
+        this._edit = Number(b.dataset.i);
+        this._key = null;
+        this._render();
+      });
       this._form.addEventListener("value-changed", (e) => this._changed(e));
       this._built = true;
     }
@@ -1208,6 +1220,20 @@ class AutosCardHaEditor extends HTMLElement {
     this._form.schema = this._schema(vehicles);
     this._form.computeLabel = (s) => LABELS[s.name] || s.name;
     this._renderDetected();
+    this._renderSel();
+  }
+
+  _renderSel() {
+    if (!this._vsel) return;
+    if (!this._isMulti()) {
+      this._vsel.hidden = true;
+      return;
+    }
+    this._entry();
+    this._vsel.hidden = false;
+    this._vsel.innerHTML = `<div class="t">Les réglages ci-dessous (nom, photo, couleur, entités) concernent :</div><div class="b">${this._config.vehicles
+      .map((x, i) => `<button data-i="${i}" class="${i === this._edit ? "on" : ""}">${esc(x.name || deviceName(this._hass, x.device))}</button>`)
+      .join("")}</div>`;
   }
 
   _isMulti() {
@@ -1229,7 +1255,6 @@ class AutosCardHaEditor extends HTMLElement {
       cfg = { ...cfg0 };
       for (const k of PER_VEHICLE) delete cfg[k];
       Object.assign(cfg, e);
-      cfg.vehicle_edit = e.device;
       delete cfg.device;
     }
     const d = { ...EDITOR_DEFAULTS, ...cfg };
@@ -1345,6 +1370,7 @@ class AutosCardHaEditor extends HTMLElement {
     this._config = v;
     this._form.data = this._formData(v);
     this._renderDetected();
+    this._renderSel();
     this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: v }, bubbles: true, composed: true }));
   }
 }
